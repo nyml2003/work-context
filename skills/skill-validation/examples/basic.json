@@ -1,0 +1,10 @@
+{
+  "request": "我刚创建了一个新的 Codex skill，帮我用当前仓库的 CLI 做创建后自检。",
+  "target_skill": "release-note-helper",
+  "checks": [
+    "skill lint",
+    "skill test",
+    "context build"
+  ]
+}
+

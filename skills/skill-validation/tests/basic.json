@@ -1,0 +1,9 @@
+{
+  "bundle_contains": [
+    "name: \"skill-validation\"",
+    "使用 $skill-validation 校验这个仓库里刚创建或刚修改的 Codex skill。",
+    "python scripts/workbench.py skill lint <name>",
+    "只会同步 skills/ 下面的 skill 目录。"
+  ],
+  "reference_count": 2
+}

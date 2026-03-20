@@ -42,6 +42,11 @@ skills/<skill-name>/
 - `workspace-config/`：外部代码仓库登记表
 - `reports/`：生成的报告、打包结果、上下文预览
 
+## 当前自带的 skill
+
+- `codex-skill-authoring`：负责“怎么设计和编写一个 Codex skill”
+- `skill-validation`：负责“skill 写完以后，怎么用当前 workbench CLI 做创建后自检”
+
 ## 最常用的用法
 
 ### 1. 先检查仓库里的 skill 有没有问题
@@ -131,6 +136,8 @@ python scripts/workbench.py skill sync codex-skill-authoring --target C:\temp\co
 install_root = "~/.codex/skills"
 ```
 
+注意：同步时只会复制 `skills/` 下面的 skill 目录，不会复制 `src/`、`templates/`、`tests/`、`workspace-config/`、`reports/` 这些维护工具目录。
+
 ## 推荐工作流
 
 如果你平时就是维护 skill，最简单的流程就是：
@@ -198,5 +205,6 @@ metadata:
 仓库里已经带了一个示例：
 
 - `skills/codex-skill-authoring/`
+- `skills/skill-validation/`
 
 如果你想先理解格式，先看它最直接。

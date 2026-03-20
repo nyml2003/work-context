@@ -1,0 +1,7 @@
+interface:
+  display_name: "Skill 创建校验"
+  short_description: "校验新建或修改后的 Codex skill 结构、测试与同步准备情况"
+  default_prompt: "使用 $skill-validation 校验这个仓库里刚创建或刚修改的 Codex skill。"
+policy:
+  allow_implicit_invocation: true
+

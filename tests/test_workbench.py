@@ -36,6 +36,7 @@ class WorkbenchTestCase(unittest.TestCase):
         self.assertTrue((root / "workbench.toml").exists())
         self.assertTrue((root / "skills" / "codex-skill-authoring" / "SKILL.md").exists())
         self.assertTrue((root / "skills" / "codex-skill-authoring" / "agents" / "openai.yaml").exists())
+        self.assertTrue((root / "skills" / "skill-validation" / "SKILL.md").exists())
 
     def test_lint_and_skill_tests_pass(self) -> None:
         config = load_config(REPO_ROOT)
@@ -47,6 +48,12 @@ class WorkbenchTestCase(unittest.TestCase):
         payload = build_context_payload(config, "codex-skill-authoring")
         self.assertIn("bundle_markdown", payload)
         self.assertIn("Validation Checklist", payload["bundle_markdown"])
+
+    def test_context_payload_contains_validation_flow(self) -> None:
+        config = load_config(REPO_ROOT)
+        payload = build_context_payload(config, "skill-validation")
+        self.assertIn("bundle_markdown", payload)
+        self.assertIn("python scripts/workbench.py skill lint <name>", payload["bundle_markdown"])
 
     def test_sync_skills_to_custom_target(self) -> None:
         root = make_temp_dir()
@@ -83,6 +90,7 @@ class WorkbenchTestCase(unittest.TestCase):
         config = load_config(REPO_ROOT)
         names = {skill.name for skill in discover_skills(config)}
         self.assertIn("codex-skill-authoring", names)
+        self.assertIn("skill-validation", names)
 
 
 if __name__ == "__main__":
