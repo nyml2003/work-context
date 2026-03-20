@@ -46,6 +46,7 @@ skills/<skill-name>/
 
 - `codex-skill-authoring`：负责“怎么设计和编写一个 Codex skill”
 - `skill-validation`：负责“skill 写完以后，怎么用当前 workbench CLI 做创建后自检”
+- `local-cli-operations`：负责“在当前终端工作目录内，优先用 workbench local CLI 做基础文件与目录操作”
 
 ## 最常用的用法
 
@@ -138,6 +139,25 @@ install_root = "~/.codex/skills"
 
 注意：同步时只会复制 `skills/` 下面的 skill 目录，不会复制 `src/`、`templates/`、`tests/`、`workspace-config/`、`reports/` 这些维护工具目录。
 
+### 5. 在当前工作目录内统一做本地文件操作
+
+如果你的目标是跨平台地读取文件、列目录、搜文本、写文件，优先用 `local` 子命令，而不是直接依赖系统 shell。
+
+```powershell
+python scripts/workbench.py local read README.md --start-line 1 --end-line 20
+python scripts/workbench.py local list skills --recursive --kind file --pattern "*.md"
+python scripts/workbench.py local grep src --pattern "build_context" --glob "*.py"
+python scripts/workbench.py local write notes.txt --content "todo"
+python scripts/workbench.py local append notes.txt --content "`nnext"
+python scripts/workbench.py local mkdir scratch\\logs --parents
+python scripts/workbench.py local stat src\\workbench\\cli.py
+```
+
+这些命令有两个重要特点：
+
+- 全部由 Python 标准库实现，用来抹平不同系统 shell 的差异
+- 路径边界不是仓库根，而是“调用命令时的当前终端工作目录”，而且这个限制是代码强制执行的
+
 ## 推荐工作流
 
 如果你平时就是维护 skill，最简单的流程就是：
@@ -159,6 +179,7 @@ install_root = "~/.codex/skills"
 - `skill pack`：把一个 skill 打成 zip
 - `skill sync`：把 skill 复制到 Codex skill 目录
 - `skill install`：`skill sync` 的别名
+- `local read/list/grep/write/append/mkdir/stat`：在当前工作目录内做跨平台本地文件操作
 - `context build`：生成一个 skill 的上下文预览
 - `workspace add`：登记外部代码仓库
 - `workspace check`：对登记过的仓库执行只读检查
@@ -206,5 +227,6 @@ metadata:
 
 - `skills/codex-skill-authoring/`
 - `skills/skill-validation/`
+- `skills/local-cli-operations/`
 
 如果你想先理解格式，先看它最直接。

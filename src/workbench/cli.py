@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from .bootstrap import initialize_repo
 from .config import ensure_base_layout, load_config
 from .context import build_context_file
+from .localops import (
+    append_local_file,
+    grep_local_path,
+    list_local_path,
+    mkdir_local_path,
+    read_local_file,
+    stat_local_path,
+    write_local_file,
+)
 from .report import timestamp_slug, to_json_text, write_markdown_report
 from .skilllib import create_skill, discover_skills, lint_skills, pack_skill, sync_skills, test_skills
 from .workspace import add_workspace, check_workspaces, load_workspaces
@@ -25,6 +35,46 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("path", nargs="?", default=".")
     init_parser.add_argument("--with-samples", action="store_true")
     init_parser.add_argument("--force", action="store_true")
+
+    local_parser = subparsers.add_parser("local", help="Cross-platform local file commands bound to the current working directory")
+    local_sub = local_parser.add_subparsers(dest="local_command", required=True)
+
+    local_read = local_sub.add_parser("read", help="Read a local text file")
+    local_read.add_argument("path")
+    local_read.add_argument("--start-line", type=int)
+    local_read.add_argument("--end-line", type=int)
+    local_read.add_argument("--encoding", default="utf-8")
+
+    local_list = local_sub.add_parser("list", help="List files or directories")
+    local_list.add_argument("path")
+    local_list.add_argument("--recursive", action="store_true")
+    local_list.add_argument("--kind", choices=["file", "dir", "all"], default="all")
+    local_list.add_argument("--pattern")
+
+    local_grep = local_sub.add_parser("grep", help="Search text in local files")
+    local_grep.add_argument("path")
+    local_grep.add_argument("--pattern", required=True)
+    local_grep.add_argument("--glob")
+    local_grep.add_argument("--ignore-case", action="store_true")
+    local_grep.add_argument("--encoding", default="utf-8")
+
+    local_write = local_sub.add_parser("write", help="Write a local text file")
+    local_write.add_argument("path")
+    local_write.add_argument("--content", required=True)
+    local_write.add_argument("--encoding", default="utf-8")
+    local_write.add_argument("--overwrite", action="store_true")
+
+    local_append = local_sub.add_parser("append", help="Append to a local text file")
+    local_append.add_argument("path")
+    local_append.add_argument("--content", required=True)
+    local_append.add_argument("--encoding", default="utf-8")
+
+    local_mkdir = local_sub.add_parser("mkdir", help="Create a local directory")
+    local_mkdir.add_argument("path")
+    local_mkdir.add_argument("--parents", action="store_true")
+
+    local_stat = local_sub.add_parser("stat", help="Inspect a local path")
+    local_stat.add_argument("path")
 
     skill_parser = subparsers.add_parser("skill", help="Codex skill management commands")
     skill_sub = skill_parser.add_subparsers(dest="skill_command", required=True)
@@ -106,6 +156,60 @@ def _sync_from_args(config: Any, args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _run_local_command(args: argparse.Namespace) -> dict[str, Any]:
+    root = _repo_root().resolve()
+    if args.local_command == "read":
+        payload = read_local_file(
+            root,
+            args.path,
+            start_line=args.start_line,
+            end_line=args.end_line,
+            encoding=args.encoding,
+        )
+    elif args.local_command == "list":
+        payload = list_local_path(
+            root,
+            args.path,
+            recursive=args.recursive,
+            kind=args.kind,
+            pattern=args.pattern,
+        )
+    elif args.local_command == "grep":
+        payload = grep_local_path(
+            root,
+            args.path,
+            pattern=args.pattern,
+            glob=args.glob,
+            ignore_case=args.ignore_case,
+            encoding=args.encoding,
+        )
+    elif args.local_command == "write":
+        payload = write_local_file(
+            root,
+            args.path,
+            content=args.content,
+            encoding=args.encoding,
+            overwrite=args.overwrite,
+        )
+    elif args.local_command == "append":
+        payload = append_local_file(
+            root,
+            args.path,
+            content=args.content,
+            encoding=args.encoding,
+        )
+    elif args.local_command == "mkdir":
+        payload = mkdir_local_path(root, args.path, parents=args.parents)
+    elif args.local_command == "stat":
+        payload = stat_local_path(root, args.path)
+    else:  # pragma: no cover
+        raise ValueError(f"Unsupported local command: {args.local_command}")
+    payload["command"] = "local"
+    payload["subcommand"] = args.local_command
+    payload["root"] = str(root)
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -114,6 +218,26 @@ def main(argv: list[str] | None = None) -> int:
         root = Path(args.path).resolve()
         created = initialize_repo(root, include_samples=args.with_samples, overwrite=args.force)
         _print_payload({"created": [str(path) for path in created], "root": str(root)})
+        return 0
+
+    if args.command == "local":
+        root = _repo_root().resolve()
+        try:
+            payload = _run_local_command(args)
+        except (OSError, ValueError, re.error) as exc:
+            _print_payload(
+                {
+                    "command": "local",
+                    "subcommand": args.local_command,
+                    "root": str(root),
+                    "error": {
+                        "type": exc.__class__.__name__,
+                        "message": str(exc),
+                    },
+                }
+            )
+            return 1
+        _print_payload(payload)
         return 0
 
     config = load_config(_repo_root())

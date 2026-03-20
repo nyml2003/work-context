@@ -229,6 +229,130 @@ SAMPLE_VALIDATION_TEST = """{
 """
 
 
+SAMPLE_LOCAL_SKILL_MD = """---
+name: "local-cli-operations"
+description: "当需要在当前终端工作目录内执行基础本地文件与目录操作时使用，优先通过 workbench 的 local CLI 统一读写、搜索和查看路径信息。"
+metadata:
+  short-description: "用 local CLI 做本地文件操作"
+---
+
+# Local CLI 操作
+
+## 概述
+
+这个 skill 用来在当前终端工作目录内做基础本地文件操作。优先使用 workbench 的 `local` 子命令，不要直接依赖 `cat`、`type`、`ls`、`dir`、`grep`、`findstr` 这类系统相关命令。
+
+## 使用边界
+
+- 所有 local 命令的路径边界都由 CLI 在代码里限制到“调用命令时的当前工作目录”。
+- 需要具体命令参数时，读取 `references/cli-quickstart.md`。
+- 需要判断某个路径为什么能访问或为什么被拒绝时，读取 `references/path-boundary.md`。
+
+## 工作流程
+
+1. 先确认目标路径位于当前终端工作目录内。
+2. 按任务选择最小的 `local` 子命令完成读取、列目录、搜索、写入、追加、建目录或查看状态。
+3. 需要改写文件前，优先先用 `local stat` 或 `local list` 确认目标位置。
+4. 如果遇到越界错误，不要绕过 CLI，先调整工作目录或把目标路径改成边界内路径。
+"""
+
+
+SAMPLE_LOCAL_OPENAI_YAML = """interface:
+  display_name: "Local CLI Operations"
+  short_description: "Use workbench local CLI for file operations inside the current cwd"
+  default_prompt: "使用 $local-cli-operations 在当前终端工作目录内通过 workbench local CLI 处理本地文件和目录操作。"
+policy:
+  allow_implicit_invocation: true
+"""
+
+
+SAMPLE_LOCAL_CLI_QUICKSTART = """# local CLI 快速参考
+
+当你需要跨平台地做基础本地文件操作时，优先使用下面这些命令。
+
+## 读取文件
+
+```powershell
+python scripts/workbench.py local read <path>
+python scripts/workbench.py local read <path> --start-line 10 --end-line 40
+```
+
+## 列目录
+
+```powershell
+python scripts/workbench.py local list <path>
+python scripts/workbench.py local list <path> --recursive --kind file --pattern "*.py"
+```
+
+## 搜文本
+
+```powershell
+python scripts/workbench.py local grep <path> --pattern "TODO"
+python scripts/workbench.py local grep <path> --pattern "build_context" --glob "*.py" --ignore-case
+```
+
+## 写入和追加
+
+```powershell
+python scripts/workbench.py local write <path> --content "hello"
+python scripts/workbench.py local write <path> --content "replace" --overwrite
+python scripts/workbench.py local append <path> --content "`nworld"
+```
+
+## 建目录和查看状态
+
+```powershell
+python scripts/workbench.py local mkdir <path> --parents
+python scripts/workbench.py local stat <path>
+```
+"""
+
+
+SAMPLE_LOCAL_PATH_BOUNDARY = """# 路径边界说明
+
+`local` 命令不会把路径访问范围绑死在仓库根，而是绑在“调用命令时的当前工作目录”。
+
+## 规则
+
+- CLI 会先把输入路径解析成绝对路径。
+- 解析后如果路径不在当前工作目录之内，命令会直接失败。
+- 这个限制在代码里强制执行，不依赖 agent 是否自觉。
+- 相对路径和绝对路径都会做同样的边界检查。
+
+## 例子
+
+如果当前终端工作目录是 `C:\\repo\\project`：
+
+- `notes/todo.md` 可以访问
+- `C:\\repo\\project\\src\\main.py` 可以访问
+- `..\\shared\\data.txt` 会被拒绝
+- `C:\\repo\\other\\README.md` 会被拒绝
+"""
+
+
+SAMPLE_LOCAL_EXAMPLE = """{
+  "request": "在当前终端目录里读取 docs/plan.md 的前 40 行，搜索 TODO，并把结果追加到 reports/notes.txt。",
+  "preferred_commands": [
+    "local read",
+    "local grep",
+    "local append"
+  ]
+}
+"""
+
+
+SAMPLE_LOCAL_TEST = """{
+  "bundle_contains": [
+    "name: \\"local-cli-operations\\"",
+    "python scripts/workbench.py local read <path>",
+    "调用命令时的当前工作目录",
+    "CLI 会先把输入路径解析成绝对路径。"
+  ],
+  "reference_count": 2
+}
+"""
+
+
 SAMPLE_SCRIPT = """#!/usr/bin/env python3
 \"\"\"Validate a generated skill name.\"\"\"
 
@@ -315,6 +439,12 @@ def initialize_repo(root: Path, *, include_samples: bool = False, overwrite: boo
             "skills/skill-validation/references/acceptance-checklist.md": SAMPLE_VALIDATION_CHECKLIST,
             "skills/skill-validation/examples/basic.json": SAMPLE_VALIDATION_EXAMPLE,
             "skills/skill-validation/tests/basic.json": SAMPLE_VALIDATION_TEST,
+            "skills/local-cli-operations/SKILL.md": SAMPLE_LOCAL_SKILL_MD,
+            "skills/local-cli-operations/agents/openai.yaml": SAMPLE_LOCAL_OPENAI_YAML,
+            "skills/local-cli-operations/references/cli-quickstart.md": SAMPLE_LOCAL_CLI_QUICKSTART,
+            "skills/local-cli-operations/references/path-boundary.md": SAMPLE_LOCAL_PATH_BOUNDARY,
+            "skills/local-cli-operations/examples/basic.json": SAMPLE_LOCAL_EXAMPLE,
+            "skills/local-cli-operations/tests/basic.json": SAMPLE_LOCAL_TEST,
         }
         for relative_path, content in sample_files.items():
             target = root / relative_path

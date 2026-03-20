@@ -1,0 +1,8 @@
+{
+  "request": "在当前终端目录里读取 docs/plan.md 的前 40 行，搜索 TODO，并把结果追加到 reports/notes.txt。",
+  "preferred_commands": [
+    "local read",
+    "local grep",
+    "local append"
+  ]
+}

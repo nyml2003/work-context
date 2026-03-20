@@ -1,0 +1,6 @@
+interface:
+  display_name: "Local CLI Operations"
+  short_description: "Use workbench local CLI for file operations inside the current cwd"
+  default_prompt: "使用 $local-cli-operations 在当前终端工作目录内通过 workbench local CLI 处理本地文件和目录操作。"
+policy:
+  allow_implicit_invocation: true
