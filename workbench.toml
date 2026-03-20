@@ -1,0 +1,11 @@
+[paths]
+skills = "skills"
+templates = "templates"
+reports = "reports"
+workspace_config = "workspace-config"
+
+[files]
+workspace_registry = "workspace-config/workspaces.toml"
+
+[codex]
+install_root = "~/.codex/skills"

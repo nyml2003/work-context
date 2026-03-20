@@ -1,0 +1,7 @@
+interface:
+  display_name: "Codex Skill Authoring"
+  short_description: "Maintain Codex skills"
+  default_prompt: "Use $codex-skill-authoring to create or refine a Codex skill."
+policy:
+  allow_implicit_invocation: true
+

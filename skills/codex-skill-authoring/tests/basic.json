@@ -1,0 +1,8 @@
+{
+  "bundle_contains": [
+    "name: \"codex-skill-authoring\"",
+    "Use $codex-skill-authoring",
+    "Validation Checklist"
+  ],
+  "reference_count": 2
+}

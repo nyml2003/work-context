@@ -1,0 +1,8 @@
+{
+  "request": "Create a new Codex skill for changelog maintenance.",
+  "constraints": [
+    "Keep SKILL.md concise.",
+    "Use agents/openai.yaml for UI metadata."
+  ]
+}
+

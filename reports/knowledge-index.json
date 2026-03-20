@@ -1,0 +1,40 @@
+{
+  "documents": [
+    {
+      "id": "authoring-guide",
+      "title": "Skill Authoring Guide",
+      "source": "internal",
+      "updated_at": "2026-03-20",
+      "tags": [
+        "skills",
+        "authoring"
+      ],
+      "related_skills": [
+        "example-skill"
+      ],
+      "status": "active",
+      "body": "# Skill Authoring Guide\n\nKeep each skill short. Put shared rules, parsing logic, and packaging behavior in Python modules instead of duplicating them in markdown.\n",
+      "path": "knowledge\\authoring-guide.md"
+    },
+    {
+      "id": "repo-playbook",
+      "title": "Repository Maintenance Playbook",
+      "source": "internal",
+      "updated_at": "2026-03-20",
+      "tags": [
+        "repository",
+        "operations"
+      ],
+      "related_skills": [
+        "example-skill"
+      ],
+      "status": "active",
+      "body": "# Repository Maintenance Playbook\n\nRegister external repositories in the workspace registry before using them. Default to read-only checks when building context or audits.\n",
+      "path": "knowledge\\repo-playbook.md"
+    }
+  ],
+  "ids": [
+    "authoring-guide",
+    "repo-playbook"
+  ]
+}
