@@ -1,23 +1,32 @@
 from __future__ import annotations
 
+"""命令层的协议定义。
+
+这里描述命令声明、参数校验和 parser 构建规则，不介入业务流程。
+"""
+
 import argparse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..composition import RuntimeContext, ServiceContainer
+from ..composition import RuntimeContext
 from ..core import Result
 from ..domain.errors import AppError, AppErrorCode, app_error
 
 
 @dataclass
 class CommandResult:
+    """命令组返回给 CLI 的统一结果。"""
+
     exit_code: int
     payload: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class ArgumentSpec:
+    """对 argparse 参数的一层声明式包装。"""
+
     flags: tuple[str, ...]
     kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -35,6 +44,8 @@ class ArgumentSpec:
 
 @dataclass(frozen=True)
 class CommandSpec:
+    """描述一级命令或子命令的静态结构。"""
+
     name: str
     help: str
     arguments: tuple[ArgumentSpec, ...] = ()
@@ -43,6 +54,11 @@ class CommandSpec:
 
 
 class CommandGroup(ABC):
+    """命令层执行单元。
+
+    命令组负责暴露命令结构，并把解析后的参数转交给 application 层。
+    """
+
     name: str
     order: int = 100
 
@@ -56,6 +72,8 @@ class CommandGroup(ABC):
         raise NotImplementedError
 
     def subcommand(self, args: Any) -> str | None:
+        """沿着 `CommandSpec` 树向下解析当前命中的子命令名。"""
+
         current = self.spec
         while current.subcommands:
             if current.subcommand_dest is None:
@@ -71,7 +89,11 @@ class CommandGroup(ABC):
 
 
 class ParserFactory:
+    """把命令声明转换成 argparse parser，并提前拦截明显的结构冲突。"""
+
     def build(self, *, prog: str, description: str, groups: tuple[CommandGroup, ...]) -> Result[argparse.ArgumentParser, AppError]:
+        """构建完整 parser，并在注册前完成命令级校验。"""
+
         parser = argparse.ArgumentParser(prog=prog, description=description)
         subparsers = parser.add_subparsers(dest="command", required=True)
         validated = self.validate_group_names(groups)
@@ -84,6 +106,8 @@ class ParserFactory:
         return Result.ok(parser)
 
     def validate_group_names(self, groups: tuple[CommandGroup, ...]) -> Result[None, AppError]:
+        """校验一级命令名与 `CommandSpec` 是否一致且没有重复。"""
+
         seen: set[str] = set()
         for group in groups:
             if group.name != group.spec.name:
@@ -103,6 +127,8 @@ class ParserFactory:
         ancestor_dests: set[str],
         path: tuple[str, ...],
     ) -> Result[None, AppError]:
+        """递归注册命令树，并在每一层做参数冲突校验。"""
+
         parser = subparsers.add_parser(spec.name, help=spec.help)
         validated = self.validate_arguments(spec, ancestor_dests, path)
         if validated.is_err:
@@ -141,6 +167,8 @@ class ParserFactory:
         return Result.ok(None)
 
     def validate_child_names(self, spec: CommandSpec, path: tuple[str, ...]) -> Result[None, AppError]:
+        """校验同级子命令名不重复。"""
+
         seen: set[str] = set()
         for child in spec.subcommands:
             if child.name in seen:
@@ -151,6 +179,8 @@ class ParserFactory:
         return Result.ok(None)
 
     def validate_arguments(self, spec: CommandSpec, ancestor_dests: set[str], path: tuple[str, ...]) -> Result[set[str], AppError]:
+        """校验当前命令层级内的参数名、flag 与 dest 不冲突。"""
+
         option_flags: set[str] = set()
         positional_names: set[str] = set()
         local_dests: set[str] = set()

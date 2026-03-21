@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""workspace 相关的 application service。"""
+
 from typing import Any
 
 from ..config import WorkbenchConfig
@@ -18,6 +20,8 @@ from ..infrastructure import CommandRunner, GitClient, WorkspaceRegistry
 
 
 class WorkspaceService:
+    """编排 workspace 注册、检查和远程仓库初始化。"""
+
     def __init__(
         self,
         config: WorkbenchConfig,
@@ -36,6 +40,8 @@ class WorkspaceService:
         self.git_client = git_client or GitClient(self.runner)
 
     def load_workspaces(self) -> Result[list[Workspace], AppError]:
+        """读取注册表中的全部 workspace。"""
+
         return self.registry.load_workspaces()
 
     def register_workspace(
@@ -48,6 +54,11 @@ class WorkspaceService:
         remote_name: str | None = None,
         repo_slug: str | None = None,
     ) -> Result[Any, AppError]:
+        """注册一个 workspace。
+
+        未显式提供路径时，会落到受管目录 `managed_repos_dir` 下。
+        """
+
         target = resolve_workspace_target(self.config.root, self.config.managed_repos_dir, name, path)
         workspace = Workspace(
             name=name,
@@ -58,13 +69,18 @@ class WorkspaceService:
             repo_slug=repo_slug or name,
         )
         if not workspace.check_commands:
+            # 默认检查命令保持只读，避免 `check` 隐式修改仓库状态。
             workspace.check_commands = ["git status --short", "git branch --show-current"]
         return self.registry.save_workspace(workspace)
 
     def add_workspace(self, *args: Any, **kwargs: Any) -> Result[Any, AppError]:
+        """兼容旧命名，实际仍走 `register_workspace`。"""
+
         return self.register_workspace(*args, **kwargs)
 
     def get_workspace(self, name: str) -> Result[Workspace, AppError]:
+        """按名称读取单个 workspace。"""
+
         loaded = self.load_workspaces()
         if loaded.is_err:
             return Result.err(loaded.error)
@@ -73,7 +89,9 @@ class WorkspaceService:
             return Result.err(app_error(AppErrorCode.NOT_FOUND, f"Workspace not found: {name}", workspace=name))
         return Result.ok(workspace)
 
-    def _remote_status(self, workspace: Workspace, git_ok: bool) -> Result[dict[str, Any], AppError]:
+    def resolve_remote_status(self, workspace: Workspace, git_ok: bool) -> Result[dict[str, Any], AppError]:
+        """比较期望远程地址与实际远程地址，生成状态摘要。"""
+
         expected_url = workspace.expected_remote_url(self.config.github_remote_prefix)
         result: dict[str, Any] = {
             "remote_name": workspace.remote_name,
@@ -105,6 +123,11 @@ class WorkspaceService:
         return Result.ok(result)
 
     def check_workspaces(self, name: str | None = None) -> Result[dict[str, Any], AppError]:
+        """执行 workspace 健康检查。
+
+        这里会组合路径存在性、git 状态、远程仓库状态和安全检查命令的执行结果。
+        """
+
         loaded = self.load_workspaces()
         if loaded.is_err:
             return Result.err(loaded.error)
@@ -159,7 +182,7 @@ class WorkspaceService:
                     }
                 )
 
-            remote = self._remote_status(workspace, git_ok)
+            remote = self.resolve_remote_status(workspace, git_ok)
             if remote.is_err:
                 return Result.err(remote.error.with_context(workspace=workspace.name))
             results.append(
@@ -178,6 +201,8 @@ class WorkspaceService:
         return Result.ok({"workspace_count": len(results), "results": results})
 
     def initialize_remote(self, name: str, *, reset_existing: bool = False) -> Result[dict[str, Any], AppError]:
+        """为已注册 workspace 配置远程仓库地址。"""
+
         workspace = self.get_workspace(name)
         if workspace.is_err:
             return Result.err(workspace.error)

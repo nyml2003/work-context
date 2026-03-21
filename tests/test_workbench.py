@@ -17,15 +17,13 @@ if str(SRC_DIR) not in sys.path:
 TMP_ROOT = REPO_ROOT / ".tmp-tests"
 TMP_ROOT.mkdir(exist_ok=True)
 
+from workbench.application import ContextService, SkillService, WorkspaceService
 from workbench.bootstrap import initialize_repo
 from workbench.cli import main
 from workbench.commands.base import ArgumentSpec, CommandGroup, CommandResult, CommandSpec, ParserFactory, RuntimeContext
 from workbench.config import load_config
-from workbench.context import build_context_payload
 from workbench.core import Option, Result
 from workbench.domain.errors import AppErrorCode
-from workbench.skilllib import discover_skills, lint_skills, sync_skills, test_skills
-from workbench.workspace import add_workspace, check_workspaces, load_workspaces
 
 
 def make_temp_dir() -> Path:
@@ -135,24 +133,25 @@ class WorkbenchTestCase(unittest.TestCase):
 
     def test_lint_and_skill_tests_pass(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
-        self.assertEqual(expect_ok(lint_skills(config))["issue_count"], 0)
-        self.assertEqual(expect_ok(test_skills(config))["failure_count"], 0)
+        service = SkillService(config)
+        self.assertEqual(expect_ok(service.lint_skills())["issue_count"], 0)
+        self.assertEqual(expect_ok(service.test_skills())["failure_count"], 0)
 
     def test_context_payload_contains_references(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
-        payload = expect_ok(build_context_payload(config, "codex-skill-authoring"))
+        payload = expect_ok(ContextService(config).build_context_payload("codex-skill-authoring"))
         self.assertIn("bundle_markdown", payload)
         self.assertIn("Validation Checklist", payload["bundle_markdown"])
 
     def test_context_payload_contains_validation_flow(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
-        payload = expect_ok(build_context_payload(config, "skill-validation"))
+        payload = expect_ok(ContextService(config).build_context_payload("skill-validation"))
         self.assertIn("bundle_markdown", payload)
         self.assertIn("python scripts/workbench.py skill lint <name>", payload["bundle_markdown"])
 
     def test_context_payload_contains_local_cli_references(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
-        payload = expect_ok(build_context_payload(config, "local-cli-operations"))
+        payload = expect_ok(ContextService(config).build_context_payload("local-cli-operations"))
         self.assertIn("bundle_markdown", payload)
         self.assertIn("python scripts/workbench.py local read <path>", payload["bundle_markdown"])
 
@@ -160,7 +159,7 @@ class WorkbenchTestCase(unittest.TestCase):
         root = make_temp_dir()
         config = expect_ok(load_config(REPO_ROOT))
         target = root / "codex-skills"
-        synced = expect_ok(sync_skills(config, skill_name="codex-skill-authoring", target_root=target))
+        synced = expect_ok(SkillService(config).sync_skills(name="codex-skill-authoring", target_root=target))
         self.assertEqual(len(synced), 1)
         self.assertTrue((target / "codex-skill-authoring" / "SKILL.md").exists())
 
@@ -182,14 +181,15 @@ class WorkbenchTestCase(unittest.TestCase):
         root = make_temp_dir()
         expect_ok(initialize_repo(root, include_samples=True))
         config = expect_ok(load_config(root))
-        expect_ok(add_workspace(config, "self", ".", check_commands=["python --version"]))
-        payload = expect_ok(check_workspaces(config, "self"))
+        service = WorkspaceService(config)
+        expect_ok(service.register_workspace("self", ".", check_commands=["python --version"]))
+        payload = expect_ok(service.check_workspaces("self"))
         self.assertEqual(payload["workspace_count"], 1)
         self.assertEqual(payload["results"][0]["checks"][0]["status"], "ok")
 
     def test_discover_skills_returns_codex_skill(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
-        names = {skill.name for skill in expect_ok(discover_skills(config))}
+        names = {skill.name for skill in expect_ok(SkillService(config).discover_skills())}
         self.assertIn("codex-skill-authoring", names)
         self.assertIn("skill-validation", names)
         self.assertIn("local-cli-operations", names)
@@ -262,7 +262,7 @@ class WorkbenchTestCase(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("registry", value)
         config = expect_ok(load_config(root))
-        entries = {workspace.name: workspace for workspace in expect_ok(load_workspaces(config))}
+        entries = {workspace.name: workspace for workspace in expect_ok(WorkspaceService(config).load_workspaces())}
         self.assertIn("demo", entries)
         self.assertEqual(entries["demo"].path, "repos/demo")
 
@@ -319,10 +319,31 @@ class WorkbenchTestCase(unittest.TestCase):
             },
         )
 
+    def test_root_compatibility_wrappers_removed(self) -> None:
+        removed = {
+            "context.py",
+            "localops.py",
+            "report.py",
+            "skilllib.py",
+            "workspace.py",
+        }
+        existing = {path.name for path in (SRC_DIR / "workbench").glob("*.py")}
+        self.assertTrue(removed.isdisjoint(existing))
+
     def test_domain_workspace_stays_free_of_cli_and_subprocess_dependencies(self) -> None:
         source = (SRC_DIR / "workbench" / "domain" / "workspace.py").read_text(encoding="utf-8")
         self.assertNotIn("argparse", source)
         self.assertNotIn("subprocess", source)
+
+    def test_local_and_report_services_use_infrastructure_modules(self) -> None:
+        local_source = (SRC_DIR / "workbench" / "application" / "local_service.py").read_text(encoding="utf-8")
+        report_source = (SRC_DIR / "workbench" / "application" / "report_service.py").read_text(encoding="utf-8")
+        cli_source = (SRC_DIR / "workbench" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn("from ..infrastructure.local_files import", local_source)
+        self.assertNotIn("from ..localops import", local_source)
+        self.assertIn("from ..infrastructure.report_output import", report_source)
+        self.assertIn("from .infrastructure.report_output import to_json_text", cli_source)
+        self.assertNotIn("from .report import to_json_text", cli_source)
 
 
 if __name__ == "__main__":

@@ -1,22 +1,24 @@
 # Workbench 架构说明
 
-这份文档描述的是当前仓库里的实际结构，不是未来目标图。
+这份文档描述的是当前仓库里的实际结构，不是历史状态，也不是未来愿景图。
 
-它解决两个问题：
+它主要回答 4 个问题：
 
-- 新维护者怎样快速看懂现在的实现
-- 接下来还要继续演进的地方具体在哪里
+- 新维护者应该先看哪里
+- CLI 到业务逻辑的调用链怎么走
+- 模块分层边界是什么
+- 接下来还应该往哪里继续收口
 
 ## 1. 一眼看懂
 
-`workbench` 当前是一个分层 CLI，应按下面这个顺序理解：
+`workbench` 当前是一个分层 CLI，推荐按下面的顺序建立心智模型：
 
 - `cli.py`
   - 进程入口、统一 JSON 输出、命令分发
 - `composition/`
   - 运行时装配
 - `commands/`
-  - CLI 协议、命令声明、参数注册
+  - 命令声明、参数协议、parser 构建
 - `application/`
   - 用例编排
 - `domain/`
@@ -50,9 +52,14 @@ flowchart TD
     Domain --> Core
 ```
 
-主规则很简单：外层依赖内层，内层不反向依赖外层。
+主规则很简单：
 
-## 2. 目录职责
+- 外层依赖内层
+- 业务规则不反向依赖 CLI
+- IO 细节不直接泄漏到命令层
+- 公开边界统一走 `Result` / `Option`
+
+## 2. 分层职责
 
 ### `core/`
 
@@ -61,7 +68,7 @@ flowchart TD
 - `Result[T, E]`
 - `Option[T]`
 
-这层不应该知道 CLI、workspace、skill 这些业务概念。
+这层不应该知道 skill、workspace、CLI 这些业务概念。
 
 ### `domain/`
 
@@ -95,11 +102,13 @@ flowchart TD
 - `git_client.py`
 - `process_runner.py`
 - `workspace_registry.py`
+- `local_files.py`
+- `report_output.py`
 - `skill_loader.py`
 - `skill_templates.py`
 - `skill_packaging.py`
 
-这层可以做 IO，但不负责业务流程编排。
+这层可以做 IO，但不负责跨多个对象的业务流程编排。
 
 ### `application/`
 
@@ -107,17 +116,23 @@ flowchart TD
 
 当前主要 service：
 
-- `WorkspaceService`
 - `SkillService`
+- `WorkspaceService`
 - `ContextService`
-- `ReportService`
 - `LocalService`
+- `ReportService`
 
-skill 相关 use case 已经拆成独立函数模块：
+skill 相关 use case 已经拆成纯函数模块：
 
 - `skill_creation.py`
 - `skill_validation.py`
 - `skill_bundle.py`
+
+这层的定位是：
+
+- 给命令层提供稳定入口
+- 不把命令行参数对象泄漏进来
+- 不把底层文件布局细节扩散出去
 
 ### `composition/`
 
@@ -132,7 +147,7 @@ skill 相关 use case 已经拆成独立函数模块：
 
 - 加载 `WorkbenchConfig`
 - 保证基础目录存在
-- 延迟创建 service graph
+- 延迟装配 service graph
 - 为 `local` 命令单独缓存 `LocalService`
 
 ### `commands/`
@@ -141,8 +156,8 @@ skill 相关 use case 已经拆成独立函数模块：
 
 关键抽象：
 
-- `CommandSpec`
 - `ArgumentSpec`
+- `CommandSpec`
 - `CommandGroup`
 - `CommandResult`
 - `ParserFactory`
@@ -150,27 +165,7 @@ skill 相关 use case 已经拆成独立函数模块：
 每个 `*_command.py` 文件只做两件事：
 
 1. 声明命令结构
-2. 把解析后的参数交给对应 application service
-
-### 根级模块
-
-根目录仍然有一批重要模块，它们分成两类：
-
-兼容包装层：
-
-- `skilllib.py`
-- `context.py`
-- `workspace.py`
-
-根级功能模块：
-
-- `localops.py`
-- `config.py`
-- `bootstrap.py`
-- `report.py`
-- `fs.py`
-
-其中兼容包装层已经不是主逻辑承载点，`localops.py` 仍然是较大的函数式模块。
+2. 把解析后的参数转交给 application service
 
 ## 3. 启动链路
 
@@ -202,14 +197,17 @@ sequenceDiagram
     CLI-->>User: {ok: true, value: ...} / {ok: false, err: ...}
 ```
 
-这里最大的变化是：
+这个链路的关键点是：
 
-- `cli.py` 不再手工构造每个 subparser
-- `RuntimeContext` 已经从 `commands/base.py` 抽到了 `composition/runtime.py`
+- `cli.py` 不再手工堆一大串 subparser
+- parser 冲突在构建阶段提前失败
+- 业务错误和参数错误都能走统一错误协议回传
 
-## 4. 命令是怎么被加载的
+## 4. 命令是怎么接入的
 
-`commands/__init__.py` 采用自动发现机制：
+[commands/__init__.py](/C:/Users/nyml/code/work-context/src/workbench/commands/__init__.py) 负责装载命令组。
+
+当前机制是命令包内约定式发现：
 
 - 扫描 `commands/` 下模块
 - 跳过 `base.py`
@@ -221,9 +219,9 @@ sequenceDiagram
 
 1. 新建一个 `*_command.py`
 2. 暴露 `COMMAND_GROUP`
-3. 让自动加载器发现它
+3. 让装载器发现它
 
-而不是再去改 `cli.py`。
+而不是继续去改 `cli.py`。
 
 ```mermaid
 flowchart LR
@@ -237,26 +235,25 @@ flowchart LR
     Group --> Parser
 ```
 
-## 5. `commands/base.py` 现在负责什么
+## 5. `commands/base.py` 负责什么
 
 [commands/base.py](/C:/Users/nyml/code/work-context/src/workbench/commands/base.py) 当前只负责 CLI 协议：
 
-- `ArgumentSpec`
-- `CommandSpec`
-- `CommandGroup`
-- `CommandResult`
-- `ParserFactory`
+- 命令声明模型
+- 参数声明模型
+- parser 构建
+- 冲突校验
 
-它不再负责 service graph 装配。
-
-`ParserFactory` 还会在 parser 构建阶段做冲突检查：
+`ParserFactory` 会在 parser 构建阶段校验：
 
 - 一级命令重名
 - 子命令重名
 - option flag 冲突
 - positional 参数冲突
 - `dest` 冲突
-- 忘记声明 `subcommand_dest`
+- 缺失 `subcommand_dest`
+
+这一步很重要，因为它把很多原本只能在运行时才撞出来的问题前置到了启动期。
 
 ## 6. RuntimeContext 与 ServiceContainer
 
@@ -267,11 +264,11 @@ flowchart LR
     Runtime["RuntimeContext"]
     Config["WorkbenchConfig"]
     Container["ServiceContainer"]
-    Local["LocalService"]
     Skill["SkillService"]
     Workspace["WorkspaceService"]
     Context["ContextService"]
     Report["ReportService"]
+    Local["LocalService"]
 
     Runtime --> Config
     Runtime --> Container
@@ -282,7 +279,7 @@ flowchart LR
     Container --> Report
 ```
 
-`ServiceContainer` 当前只收纳：
+`ServiceContainer` 当前收纳：
 
 - `config`
 - `skill`
@@ -290,11 +287,15 @@ flowchart LR
 - `context`
 - `report`
 
-`LocalService` 单独缓存，不放进 `ServiceContainer`，因为它只依赖 repo root，不需要完整 config 装配。
+`LocalService` 单独缓存，不放进 `ServiceContainer`，原因是：
 
-## 7. skill 模块现在怎么拆
+- 它只依赖 repo root
+- 不需要完整 config 装配
+- 可以让 `local` 命令在没有 `workbench.toml` 的目录下也工作
 
-skill 已经不再由一个胖 `skilllib.py` 承担主逻辑。
+## 7. 主要业务链路
+
+### Skill 链路
 
 ```mermaid
 flowchart LR
@@ -302,63 +303,61 @@ flowchart LR
     Creation["application/skill_creation.py"]
     Validation["application/skill_validation.py"]
     Bundle["application/skill_bundle.py"]
+    Loader["infrastructure/skill_loader.py"]
+    Packaging["infrastructure/skill_packaging.py"]
+    Templates["infrastructure/skill_templates.py"]
     SkillDomain["domain/skill.py"]
     Rules["domain/skill_rules.py"]
-    Loader["infrastructure/skill_loader.py"]
-    Templates["infrastructure/skill_templates.py"]
-    Packaging["infrastructure/skill_packaging.py"]
-    Compat["skilllib.py"]
 
     SkillService --> Creation
     SkillService --> Validation
     SkillService --> Bundle
     SkillService --> Loader
     SkillService --> Packaging
-    Creation --> SkillDomain
     Creation --> Templates
+    Creation --> SkillDomain
     Validation --> Loader
     Validation --> Rules
     Validation --> SkillDomain
-    Bundle --> SkillDomain
     Bundle --> Loader
-    Packaging --> Loader
-    Compat --> Creation
-    Compat --> Validation
-    Compat --> Bundle
-    Compat --> Loader
-    Compat --> Packaging
+    Bundle --> SkillDomain
 ```
 
-分层职责如下：
+职责分布如下：
 
-- `domain/skill.py`
-  - `Skill`
-  - skill 共享常量
-  - `skill_to_record`
-- `domain/skill_rules.py`
-  - lint 规则收集
-- `infrastructure/skill_loader.py`
+- `SkillService`
+  - application façade
+  - 对命令层暴露稳定接口
+- `skill_creation.py`
+  - 创建 skill 脚手架
+- `skill_validation.py`
+  - lint
+- `skill_bundle.py`
+  - bundle 渲染
+  - fixture 执行
+- `skill_loader.py`
   - 发现 skill
   - 解析 `SKILL.md`
   - 读取 `agents/openai.yaml`
-- `infrastructure/skill_templates.py`
-  - 读取 scaffold 模板
-- `infrastructure/skill_packaging.py`
-  - zip 打包
-  - sync 安装
-- `application/skill_creation.py`
-  - 创建 skill
-- `application/skill_validation.py`
-  - lint
-- `application/skill_bundle.py`
-  - bundle 渲染
-  - fixture 执行
+- `skill_packaging.py`
+  - 打包与同步
 
-[skilllib.py](/C:/Users/nyml/code/work-context/src/workbench/skilllib.py) 现在只是兼容导出层。
+### Workspace 链路
 
-## 8. Context / Report / Local 三条链
+[workspace_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/workspace_service.py) 负责编排：
 
-### Context
+- workspace 注册
+- safe check 执行
+- git remote 状态比对
+- remote 初始化 / 修复
+
+它依赖的主要基础设施是：
+
+- [workspace_registry.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/workspace_registry.py)
+- [git_client.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/git_client.py)
+- [process_runner.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/process_runner.py)
+
+### Context 链路
 
 [context_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/context_service.py) 会编排：
 
@@ -366,27 +365,19 @@ flowchart LR
 - `SkillService.render_bundle`
 - 可选的 `WorkspaceService.get_workspace`
 
-它既能返回 payload，也能写出 `.json` / `.md` 文件。
+它既能返回 payload，也能直接写出 `.json` / `.md` 文件。
 
-### Report
+### Local 链路
 
-[report_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/report_service.py) 当前是轻量编排器：
-
-- 先跑 skill lint
-- 再读 workspace 列表
-- 最后写 Markdown report
-
-### Local
-
-`local` 这条链目前是：
+`local` 这条链当前是：
 
 - [local_command.py](/C:/Users/nyml/code/work-context/src/workbench/commands/local_command.py)
 - [local_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/local_service.py)
-- [localops.py](/C:/Users/nyml/code/work-context/src/workbench/localops.py)
+- [local_files.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/local_files.py)
 
-`LocalService` 很薄，主要是把参数转交给 `localops.py`。
+`LocalService` 很薄，主要作用是把命令层调用转成稳定应用接口。
 
-`localops.py` 当前承担：
+`local_files.py` 当前承担：
 
 - boundary 检查
 - 文件读写
@@ -395,7 +386,45 @@ flowchart LR
 - mkdir
 - stat
 
-所以它仍然是当前最明显的根级“大模块”。
+### Report 链路
+
+[report_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/report_service.py) 当前是轻量编排器：
+
+- 先跑 skill lint
+- 再读 workspace 列表
+- 最后调用 [report_output.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/report_output.py) 写 Markdown report
+
+## 8. 根级模块的现状
+
+当前根目录已经不再保留兼容 façade。
+
+也就是说，下面这些旧入口已经删除：
+
+- `skilllib.py`
+- `context.py`
+- `workspace.py`
+- `localops.py`
+- `report.py`
+
+现在如果要引用实现，应直接从分层目录进入：
+
+- skill 走 `application/`、`domain/`、`infrastructure/`
+- workspace 走 `application/` 或 `domain/`
+- local/report 直接走对应的 `application/` / `infrastructure/`
+
+根级当前保留的主要模块是：
+
+- [cli.py](/C:/Users/nyml/code/work-context/src/workbench/cli.py)
+- [bootstrap.py](/C:/Users/nyml/code/work-context/src/workbench/bootstrap.py)
+- [config.py](/C:/Users/nyml/code/work-context/src/workbench/config.py)
+- [fs.py](/C:/Users/nyml/code/work-context/src/workbench/fs.py)
+- [simple_toml.py](/C:/Users/nyml/code/work-context/src/workbench/simple_toml.py)
+- [yamlish.py](/C:/Users/nyml/code/work-context/src/workbench/yamlish.py)
+
+这些文件大致分成两类：
+
+- 入口与装配胶水
+- 还未完全下沉的基础支撑代码
 
 ## 9. 统一返回协议
 
@@ -415,59 +444,48 @@ CLI 输出协议固定为：
 {"ok": false, "err": {"code": "...", "message": "...", "context": {...}}}
 ```
 
-这样 parser、业务流程、IO 失败都能用同一套结构回传。
+这样命令层、业务流程和基础设施失败都能用同一套结构回传。
 
-## 10. 当前保留下来的兼容面
+## 10. 当前技术债
 
-虽然主逻辑已经迁到分层目录，但还有三条兼容面保留在根级：
+下面这些是现在仍然真实存在的技术债。
 
-- [skilllib.py](/C:/Users/nyml/code/work-context/src/workbench/skilllib.py)
-- [context.py](/C:/Users/nyml/code/work-context/src/workbench/context.py)
-- [workspace.py](/C:/Users/nyml/code/work-context/src/workbench/workspace.py)
+### `local_files.py` 仍然偏大
 
-它们的作用是：
+虽然已经迁到 infrastructure，但 boundary 校验、读写、grep、list、stat 仍集中在一个模块里。
 
-- 稳住旧调用点
-- 避免一次性迁移所有 import
+### 根级基础模块仍有继续收口空间
 
-这类模块应该被视为 compatibility façade，而不是新的核心模块。
+`config.py`、`bootstrap.py`、`fs.py`、`simple_toml.py`、`yamlish.py` 里仍有部分代码可以继续按职责下沉：
 
-## 11. 当前技术债
+- 更偏业务规则的逻辑可下沉到 `domain/`
+- 更偏用例编排的逻辑可下沉到 `application/`
+- 更偏文件格式 / IO 的逻辑可下沉到 `infrastructure/`
 
-下面这些是现在真实存在的技术债。
+### 某些 service 仍偏 façade
 
-### `localops.py` 仍然过大
+以 `SkillService`、`LocalService` 为例，它们现在承担的是稳定应用边界，但内部仍有不少直接转调。
 
-它已经统一走 `Result`，但职责仍然集中在一个根级函数集合里。
+这不是错误，但后续仍要持续判断：
 
-### 根级兼容层还没完全收口
+- 哪些 façade 值得保留
+- 哪些能力应该继续细化成显式 use case 函数
 
-`skilllib.py`、`context.py`、`workspace.py` 仍然存在，说明旧调用面尚未完全迁移。
-
-### service 有些地方仍然偏“包装器”
-
-以 `SkillService` 为例，它当前主要在串接多个纯函数 use case。
-
-这不是错误，但后续需要继续判断：
-
-- 它是否应该继续作为稳定应用边界
-- 还是再收敛出更明确的 façade / module boundary
-
-## 12. 建议下一步
+## 11. 建议下一步
 
 按当前结构，下一阶段最合理的顺序是：
 
-1. 拆 `localops.py`
-2. 收缩根级兼容层的调用面
-3. 继续把 root 下遗留功能模块内聚到 `domain/application/infrastructure`
+1. 继续拆 `local_files.py`
+2. 把根级剩余功能模块继续内聚到 `domain/application/infrastructure`
+3. 视收益再决定是否进一步细分 façade service 与 use case 函数边界
 
 当前不建议做的事：
 
 - 再把命令注册逻辑塞回 `cli.py`
 - 为了“纯函数化”而引入过度抽象
-- 在没有收益的情况下把模块拆得过碎
+- 在没有明确收益时把模块拆得过碎
 
-## 13. 阅读顺序
+## 12. 阅读顺序
 
 第一次接手这个仓库，建议这样看：
 

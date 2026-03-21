@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""报告生成用例。"""
+
 import json
 from pathlib import Path
 from typing import Any
@@ -7,12 +9,14 @@ from typing import Any
 from ..config import WorkbenchConfig
 from ..core import Result
 from ..domain.errors import AppError
-from ..report import timestamp_slug, write_markdown_report
+from ..infrastructure.report_output import timestamp_slug, write_markdown_report
 from .skill_service import SkillService
 from .workspace_service import WorkspaceService
 
 
 class ReportService:
+    """汇总多个 application service 的结果，生成状态报告。"""
+
     def __init__(
         self,
         config: WorkbenchConfig,
@@ -25,6 +29,8 @@ class ReportService:
         self.workspace_service = workspace_service or WorkspaceService(config)
 
     def generate_report(self, *, output: Path | None = None) -> Result[dict[str, Any], AppError]:
+        """生成 Markdown 报告，并返回结构化摘要。"""
+
         lint_payload = self.skill_service.lint_skills()
         if lint_payload.is_err:
             return Result.err(lint_payload.error)

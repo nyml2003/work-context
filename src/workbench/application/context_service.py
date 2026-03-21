@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""上下文构建用例。"""
+
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,8 @@ from .workspace_service import WorkspaceService
 
 
 class ContextService:
+    """为 skill 或 workspace 生成可直接消费的上下文载荷。"""
+
     def __init__(
         self,
         config: WorkbenchConfig,
@@ -24,6 +28,11 @@ class ContextService:
         self.workspace_service = workspace_service or WorkspaceService(config)
 
     def build_context_payload(self, skill_name: str, workspace_name: str | None = None) -> Result[dict[str, Any], AppError]:
+        """组装上下文 payload。
+
+        这是命令层和后续自动化流程读取 skill 上下文的稳定入口。
+        """
+
         skill = self.skill_service.find_skill(skill_name)
         if skill.is_err:
             return Result.err(skill.error)
@@ -40,6 +49,7 @@ class ContextService:
             "bundle_markdown": bundle.value[0],
         }
         if workspace_name:
+            # workspace 信息是可选增强信息，不影响 skill bundle 的基础构建链路。
             workspace = self.workspace_service.get_workspace(workspace_name)
             if workspace.is_err:
                 return Result.err(workspace.error)
@@ -62,6 +72,8 @@ class ContextService:
         output_path: Path | None = None,
         format_name: str = "md",
     ) -> Result[Path, AppError]:
+        """把上下文 payload 序列化到文件。"""
+
         payload = self.build_context_payload(skill_name, workspace_name)
         if payload.is_err:
             return Result.err(payload.error)

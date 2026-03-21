@@ -1,35 +1,65 @@
 from __future__ import annotations
 
+"""受根目录边界约束的本地文件基础设施能力。"""
+
 import fnmatch
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .core import Result
-from .domain.errors import AppError, AppErrorCode, app_error
+from ..core import Result
+from ..domain.errors import AppError, AppErrorCode, app_error
 
 
-def _normalized_root(root: Path) -> Path:
+def normalized_root(root: Path) -> Path:
+    """标准化边界根目录，统一后续相对路径判断。"""
+
     return root.resolve()
 
 
-def _path_label(path: Path, root: Path) -> str:
+def path_label(path: Path, root: Path) -> str:
+    """优先返回相对边界根目录的展示路径。"""
+
     try:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.as_posix()
 
 
-def _path_record(path: Path, root: Path) -> dict[str, str]:
+def path_record(path: Path, root: Path) -> dict[str, str]:
+    """为 CLI 输出构造统一的路径字段。"""
+
     return {
-        "path": _path_label(path, root),
+        "path": path_label(path, root),
         "resolved_path": str(path),
     }
 
 
+def result_from_path_exception(raw_path: str, exc: Exception) -> Result[dict[str, Any], AppError]:
+    """把常见路径异常收敛为统一的 AppError。"""
+
+    if isinstance(exc, ValueError):
+        code = AppErrorCode.PATH_OUT_OF_BOUNDARY if "boundary" in str(exc) else AppErrorCode.INVALID_ARGUMENT
+        return Result.err(app_error(code, str(exc), path=raw_path))
+    if isinstance(exc, FileExistsError):
+        return Result.err(app_error(AppErrorCode.ALREADY_EXISTS, str(exc), path=raw_path))
+    if isinstance(exc, FileNotFoundError):
+        return Result.err(app_error(AppErrorCode.NOT_FOUND, str(exc), path=raw_path))
+    if isinstance(exc, IsADirectoryError):
+        return Result.err(app_error(AppErrorCode.NOT_A_FILE, str(exc), path=raw_path))
+    if isinstance(exc, OSError):
+        return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=raw_path))
+    raise exc
+
+
 def resolve_local_path(root: Path, raw_path: str, *, must_exist: bool = False) -> Path:
-    boundary_root = _normalized_root(root)
+    """将任意输入路径解析到边界内。
+
+    这里统一使用 resolve 后的绝对路径做 boundary 判断，避免 `..`、符号链接等绕过。
+    """
+
+    boundary_root = normalized_root(root)
     candidate = Path(raw_path).expanduser()
     if not candidate.is_absolute():
         candidate = boundary_root / candidate
@@ -43,14 +73,18 @@ def resolve_local_path(root: Path, raw_path: str, *, must_exist: bool = False) -
     return resolved
 
 
-def _ensure_text_file(path: Path) -> None:
+def ensure_text_file(path: Path) -> None:
+    """确保目标存在且是文件。"""
+
     if not path.exists():
         raise FileNotFoundError(f"Path does not exist: {path}")
     if not path.is_file():
         raise IsADirectoryError(f"Expected a file path: {path}")
 
 
-def _validate_line_range(start_line: int | None, end_line: int | None) -> None:
+def validate_line_range(start_line: int | None, end_line: int | None) -> None:
+    """校验读取文件时的行范围参数。"""
+
     if start_line is not None and start_line < 1:
         raise ValueError("--start-line must be >= 1")
     if end_line is not None and end_line < 1:
@@ -59,11 +93,15 @@ def _validate_line_range(start_line: int | None, end_line: int | None) -> None:
         raise ValueError("--end-line must be >= --start-line")
 
 
-def _sorted_paths(paths: list[Path]) -> list[Path]:
+def sorted_paths(paths: list[Path]) -> list[Path]:
+    """按大小写无关的稳定顺序排序路径。"""
+
     return sorted(paths, key=lambda item: item.as_posix().lower())
 
 
-def _matches_glob(path: Path, match_root: Path, pattern: str) -> bool:
+def matches_glob(path: Path, match_root: Path, pattern: str) -> bool:
+    """同时支持文件名和相对路径两种 glob 匹配方式。"""
+
     relative = path.relative_to(match_root) if path != match_root else Path(path.name)
     candidates = {path.name, relative.as_posix()}
     return any(fnmatch.fnmatchcase(candidate, pattern) for candidate in candidates)
@@ -77,29 +115,22 @@ def read_local_file(
     end_line: int | None = None,
     encoding: str = "utf-8",
 ) -> Result[dict[str, Any], AppError]:
+    """读取边界内的文本文件。"""
+
     try:
-        _validate_line_range(start_line, end_line)
+        validate_line_range(start_line, end_line)
         path = resolve_local_path(root, raw_path, must_exist=True)
-        _ensure_text_file(path)
+        ensure_text_file(path)
         text = path.read_text(encoding=encoding)
         lines = text.splitlines(keepends=True)
         start_index = 0 if start_line is None else start_line - 1
         end_index = len(lines) if end_line is None else min(end_line, len(lines))
         content = "".join(lines[start_index:end_index])
-    except ValueError as exc:
-        code = AppErrorCode.PATH_OUT_OF_BOUNDARY if "boundary" in str(exc) else AppErrorCode.INVALID_ARGUMENT
-        return Result.err(app_error(code, str(exc), path=raw_path))
-    except FileExistsError as exc:
-        return Result.err(app_error(AppErrorCode.ALREADY_EXISTS, str(exc), path=raw_path))
-    except FileNotFoundError as exc:
-        return Result.err(app_error(AppErrorCode.NOT_FOUND, str(exc), path=raw_path))
-    except IsADirectoryError as exc:
-        return Result.err(app_error(AppErrorCode.NOT_A_FILE, str(exc), path=raw_path))
-    except OSError as exc:
-        return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=raw_path))
+    except (ValueError, FileExistsError, FileNotFoundError, IsADirectoryError, OSError) as exc:
+        return result_from_path_exception(raw_path, exc)
     return Result.ok(
         {
-            **_path_record(path, root),
+            **path_record(path, root),
             "encoding": encoding,
             "line_count": len(lines),
             "start_line": start_line or (1 if lines else 0),
@@ -117,6 +148,8 @@ def list_local_path(
     kind: str = "all",
     pattern: str | None = None,
 ) -> Result[dict[str, Any], AppError]:
+    """列出边界内路径内容。"""
+
     try:
         if kind not in {"file", "dir", "all"}:
             raise ValueError("kind must be one of: file, dir, all")
@@ -128,29 +161,24 @@ def list_local_path(
             iterated = [target]
             match_root = target.parent
         entries: list[dict[str, Any]] = []
-        for item in _sorted_paths(iterated):
+        for item in sorted_paths(iterated):
             entry_type = "dir" if item.is_dir() else "file" if item.is_file() else "other"
             if kind != "all" and entry_type != kind:
                 continue
-            if pattern and not _matches_glob(item, match_root, pattern):
+            if pattern and not matches_glob(item, match_root, pattern):
                 continue
             entry: dict[str, Any] = {
-                **_path_record(item, root),
+                **path_record(item, root),
                 "type": entry_type,
             }
             if item.is_file():
                 entry["size"] = item.stat().st_size
             entries.append(entry)
-    except ValueError as exc:
-        code = AppErrorCode.PATH_OUT_OF_BOUNDARY if "boundary" in str(exc) else AppErrorCode.INVALID_ARGUMENT
-        return Result.err(app_error(code, str(exc), path=raw_path))
-    except FileNotFoundError as exc:
-        return Result.err(app_error(AppErrorCode.NOT_FOUND, str(exc), path=raw_path))
-    except OSError as exc:
-        return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=raw_path))
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return result_from_path_exception(raw_path, exc)
     return Result.ok(
         {
-            "target": _path_record(target, root),
+            "target": path_record(target, root),
             "recursive": recursive,
             "kind": kind,
             "pattern": pattern,
@@ -169,51 +197,46 @@ def grep_local_path(
     ignore_case: bool = False,
     encoding: str = "utf-8",
 ) -> Result[dict[str, Any], AppError]:
+    """在边界内对文本文件执行正则搜索。"""
+
     try:
         target = resolve_local_path(root, raw_path, must_exist=True)
         regex = re.compile(pattern, re.IGNORECASE if ignore_case else 0)
         if target.is_dir():
-            files = _sorted_paths([path for path in target.rglob("*") if path.is_file()])
+            files = sorted_paths([path for path in target.rglob("*") if path.is_file()])
             match_root = target
         else:
-            _ensure_text_file(target)
+            ensure_text_file(target)
             files = [target]
             match_root = target.parent
         matches: list[dict[str, Any]] = []
         skipped_files: list[dict[str, str]] = []
         files_scanned = 0
         for file_path in files:
-            if glob and not _matches_glob(file_path, match_root, glob):
+            if glob and not matches_glob(file_path, match_root, glob):
                 continue
             files_scanned += 1
             try:
                 lines = file_path.read_text(encoding=encoding).splitlines()
             except UnicodeDecodeError as exc:
-                skipped_files.append({"path": _path_label(file_path, root), "reason": str(exc)})
+                skipped_files.append({"path": path_label(file_path, root), "reason": str(exc)})
                 continue
             for line_number, line in enumerate(lines, start=1):
                 if regex.search(line):
                     matches.append(
                         {
-                            "path": _path_label(file_path, root),
+                            "path": path_label(file_path, root),
                             "line_number": line_number,
                             "line": line,
                         }
                     )
     except re.error as exc:
         return Result.err(app_error(AppErrorCode.INVALID_ARGUMENT, str(exc), pattern=pattern))
-    except ValueError as exc:
-        code = AppErrorCode.PATH_OUT_OF_BOUNDARY if "boundary" in str(exc) else AppErrorCode.INVALID_ARGUMENT
-        return Result.err(app_error(code, str(exc), path=raw_path))
-    except FileNotFoundError as exc:
-        return Result.err(app_error(AppErrorCode.NOT_FOUND, str(exc), path=raw_path))
-    except IsADirectoryError as exc:
-        return Result.err(app_error(AppErrorCode.NOT_A_FILE, str(exc), path=raw_path))
-    except OSError as exc:
-        return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=raw_path))
+    except (ValueError, FileNotFoundError, IsADirectoryError, OSError) as exc:
+        return result_from_path_exception(raw_path, exc)
     return Result.ok(
         {
-            "target": _path_record(target, root),
+            "target": path_record(target, root),
             "pattern": pattern,
             "glob": glob,
             "ignore_case": ignore_case,
@@ -234,6 +257,8 @@ def write_local_file(
     encoding: str = "utf-8",
     overwrite: bool = False,
 ) -> Result[dict[str, Any], AppError]:
+    """写入文本文件，默认拒绝覆盖已有文件。"""
+
     try:
         path = resolve_local_path(root, raw_path, must_exist=False)
         existed = path.exists()
@@ -243,18 +268,11 @@ def write_local_file(
             raise FileExistsError(f"Path already exists: {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding=encoding)
-    except ValueError as exc:
-        code = AppErrorCode.PATH_OUT_OF_BOUNDARY if "boundary" in str(exc) else AppErrorCode.INVALID_ARGUMENT
-        return Result.err(app_error(code, str(exc), path=raw_path))
-    except FileExistsError as exc:
-        return Result.err(app_error(AppErrorCode.ALREADY_EXISTS, str(exc), path=raw_path))
-    except IsADirectoryError as exc:
-        return Result.err(app_error(AppErrorCode.NOT_A_FILE, str(exc), path=raw_path))
-    except OSError as exc:
-        return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=raw_path))
+    except (ValueError, FileExistsError, IsADirectoryError, OSError) as exc:
+        return result_from_path_exception(raw_path, exc)
     return Result.ok(
         {
-            **_path_record(path, root),
+            **path_record(path, root),
             "encoding": encoding,
             "created": not existed,
             "overwrote": existed,
@@ -270,6 +288,8 @@ def append_local_file(
     content: str,
     encoding: str = "utf-8",
 ) -> Result[dict[str, Any], AppError]:
+    """向文本文件追加内容。"""
+
     try:
         path = resolve_local_path(root, raw_path, must_exist=False)
         existed = path.exists()
@@ -278,16 +298,11 @@ def append_local_file(
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding=encoding) as handle:
             handle.write(content)
-    except ValueError as exc:
-        code = AppErrorCode.PATH_OUT_OF_BOUNDARY if "boundary" in str(exc) else AppErrorCode.INVALID_ARGUMENT
-        return Result.err(app_error(code, str(exc), path=raw_path))
-    except IsADirectoryError as exc:
-        return Result.err(app_error(AppErrorCode.NOT_A_FILE, str(exc), path=raw_path))
-    except OSError as exc:
-        return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=raw_path))
+    except (ValueError, IsADirectoryError, OSError) as exc:
+        return result_from_path_exception(raw_path, exc)
     return Result.ok(
         {
-            **_path_record(path, root),
+            **path_record(path, root),
             "encoding": encoding,
             "created": not existed,
             "appended_characters": len(content),
@@ -297,22 +312,19 @@ def append_local_file(
 
 
 def mkdir_local_path(root: Path, raw_path: str, *, parents: bool = False) -> Result[dict[str, Any], AppError]:
+    """在边界内创建目录。"""
+
     try:
         path = resolve_local_path(root, raw_path, must_exist=False)
         existed = path.exists()
         if existed and not path.is_dir():
             raise FileExistsError(f"Path already exists and is not a directory: {path}")
         path.mkdir(parents=parents, exist_ok=True)
-    except ValueError as exc:
-        code = AppErrorCode.PATH_OUT_OF_BOUNDARY if "boundary" in str(exc) else AppErrorCode.INVALID_ARGUMENT
-        return Result.err(app_error(code, str(exc), path=raw_path))
-    except FileExistsError as exc:
-        return Result.err(app_error(AppErrorCode.ALREADY_EXISTS, str(exc), path=raw_path))
-    except OSError as exc:
-        return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=raw_path))
+    except (ValueError, FileExistsError, OSError) as exc:
+        return result_from_path_exception(raw_path, exc)
     return Result.ok(
         {
-            **_path_record(path, root),
+            **path_record(path, root),
             "parents": parents,
             "created": not existed,
         }
@@ -320,20 +332,17 @@ def mkdir_local_path(root: Path, raw_path: str, *, parents: bool = False) -> Res
 
 
 def stat_local_path(root: Path, raw_path: str) -> Result[dict[str, Any], AppError]:
+    """读取路径元数据。"""
+
     try:
         path = resolve_local_path(root, raw_path, must_exist=True)
         stat_result = path.stat()
         entry_type = "dir" if path.is_dir() else "file" if path.is_file() else "other"
-    except ValueError as exc:
-        code = AppErrorCode.PATH_OUT_OF_BOUNDARY if "boundary" in str(exc) else AppErrorCode.INVALID_ARGUMENT
-        return Result.err(app_error(code, str(exc), path=raw_path))
-    except FileNotFoundError as exc:
-        return Result.err(app_error(AppErrorCode.NOT_FOUND, str(exc), path=raw_path))
-    except OSError as exc:
-        return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=raw_path))
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return result_from_path_exception(raw_path, exc)
     return Result.ok(
         {
-            **_path_record(path, root),
+            **path_record(path, root),
             "type": entry_type,
             "size": stat_result.st_size,
             "is_symlink": path.is_symlink(),
@@ -341,3 +350,23 @@ def stat_local_path(root: Path, raw_path: str) -> Result[dict[str, Any], AppErro
             "created_at": datetime.fromtimestamp(stat_result.st_ctime, tz=timezone.utc).isoformat(),
         }
     )
+
+
+__all__ = [
+    "append_local_file",
+    "ensure_text_file",
+    "grep_local_path",
+    "list_local_path",
+    "matches_glob",
+    "mkdir_local_path",
+    "normalized_root",
+    "path_label",
+    "path_record",
+    "read_local_file",
+    "resolve_local_path",
+    "result_from_path_exception",
+    "sorted_paths",
+    "stat_local_path",
+    "validate_line_range",
+    "write_local_file",
+]

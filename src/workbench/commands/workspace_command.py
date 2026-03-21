@@ -5,7 +5,9 @@ from ..domain.errors import AppError, AppErrorCode, app_error
 from .base import ArgumentSpec, CommandGroup, CommandResult, CommandSpec, RuntimeContext
 
 
-def _workspace_register_arguments() -> tuple[ArgumentSpec, ...]:
+def workspace_register_arguments() -> tuple[ArgumentSpec, ...]:
+    """复用 workspace register / add 的参数声明。"""
+
     return (
         ArgumentSpec(("name",), {}),
         ArgumentSpec(("path",), {"nargs": "?"}),
@@ -16,7 +18,9 @@ def _workspace_register_arguments() -> tuple[ArgumentSpec, ...]:
     )
 
 
-def _workspace_check_has_failures(entry: dict[str, object]) -> bool:
+def workspace_check_has_failures(entry: dict[str, object]) -> bool:
+    """根据 check 输出判断命令是否需要返回非零退出码。"""
+
     if entry.get("status") in {"missing", "not_git"}:
         return True
     git_status = entry.get("git", {}).get("status") if isinstance(entry.get("git"), dict) else None
@@ -43,8 +47,8 @@ class WorkspaceCommandGroup(CommandGroup):
             help="Registered workspace commands",
             subcommand_dest="workspace_command",
             subcommands=(
-                CommandSpec(name="register", help="Register a workspace", arguments=_workspace_register_arguments()),
-                CommandSpec(name="add", help="Alias for workspace register", arguments=_workspace_register_arguments()),
+                CommandSpec(name="register", help="Register a workspace", arguments=workspace_register_arguments()),
+                CommandSpec(name="add", help="Alias for workspace register", arguments=workspace_register_arguments()),
                 CommandSpec(name="check", help="Run safe checks in registered workspaces", arguments=(ArgumentSpec(("name",), {"nargs": "?"}),)),
                 CommandSpec(
                     name="remote-init",
@@ -75,7 +79,7 @@ class WorkspaceCommandGroup(CommandGroup):
             payload = service.check_workspaces(args.name)
             if payload.is_err:
                 return Result.err(payload.error)
-            exit_code = 1 if any(_workspace_check_has_failures(entry) for entry in payload.value["results"]) else 0
+            exit_code = 1 if any(workspace_check_has_failures(entry) for entry in payload.value["results"]) else 0
             return Result.ok(CommandResult(exit_code, payload.value))
         if args.workspace_command == "remote-init":
             payload = service.initialize_remote(args.name, reset_existing=args.reset_existing)

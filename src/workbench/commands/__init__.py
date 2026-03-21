@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""命令组装载入口。
+
+命令模块只需要导出 `COMMAND_GROUP`，这里会负责收集并排序。
+"""
+
 from importlib import import_module
 from pkgutil import iter_modules
 from types import ModuleType
@@ -10,6 +15,11 @@ from .base import CommandGroup
 
 
 def command_modules() -> list[ModuleType]:
+    """导入命令包下的命令模块。
+
+    当前采用约定式发现：模块位于 `commands/` 且导出 `COMMAND_GROUP` 即可接入。
+    """
+
     modules: list[ModuleType] = []
     for module_info in iter_modules(__path__):
         if module_info.name == "base":
@@ -19,6 +29,8 @@ def command_modules() -> list[ModuleType]:
 
 
 def load_command_groups() -> Result[tuple[CommandGroup, ...], AppError]:
+    """收集并按稳定顺序返回命令组。"""
+
     groups: list[CommandGroup] = []
     try:
         modules = command_modules()
