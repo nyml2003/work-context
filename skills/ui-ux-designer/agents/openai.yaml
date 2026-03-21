@@ -1,0 +1,6 @@
+interface:
+  display_name: "UI UX Designer"
+  short_description: "从 UI/UX 设计师视角输出界面方案与体验评审"
+  default_prompt: "使用 $ui-ux-designer 从产品 UI/UX 设计师视角处理当前任务，重点关注 CSS 样式、视图布局、交互反馈、动画节奏、用户动线和可访问性，并输出设计方案或评审意见。"
+policy:
+  allow_implicit_invocation: true
