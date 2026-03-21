@@ -7,5 +7,10 @@ workspace_config = "workspace-config"
 [files]
 workspace_registry = "workspace-config/workspaces.toml"
 
+[workspace]
+managed_subdir = "repos"
+default_remote_name = "origin"
+github_remote_prefix = "https://github.com/nyml2003"
+
 [codex]
 install_root = "~/.codex/skills"

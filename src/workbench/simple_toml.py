@@ -5,6 +5,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .core import Result
+from .domain.errors import AppError, AppErrorCode, app_error
+
 
 class TomlError(ValueError):
     pass
@@ -64,28 +67,35 @@ def _parse_value(raw: str) -> Any:
     raise TomlError(f"Unsupported TOML value: {text}")
 
 
-def loads(content: str) -> dict[str, Any]:
-    data: dict[str, Any] = {}
-    current = data
-    for index, raw_line in enumerate(content.splitlines(), start=1):
-        line = _strip_comment(raw_line)
-        if not line:
-            continue
-        if line.startswith("[") and line.endswith("]"):
-            path = [part.strip() for part in line[1:-1].split(".") if part.strip()]
-            if not path:
-                raise TomlError(f"Empty table declaration at line {index}")
-            current = _ensure_table(data, path)
-            continue
-        if "=" not in line:
-            raise TomlError(f"Invalid TOML statement at line {index}: {raw_line}")
-        key, raw_value = line.split("=", 1)
-        current[key.strip()] = _parse_value(raw_value)
-    return data
+def loads(content: str) -> Result[dict[str, Any], AppError]:
+    try:
+        data: dict[str, Any] = {}
+        current = data
+        for index, raw_line in enumerate(content.splitlines(), start=1):
+            line = _strip_comment(raw_line)
+            if not line:
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                path = [part.strip() for part in line[1:-1].split(".") if part.strip()]
+                if not path:
+                    raise TomlError(f"Empty table declaration at line {index}")
+                current = _ensure_table(data, path)
+                continue
+            if "=" not in line:
+                raise TomlError(f"Invalid TOML statement at line {index}: {raw_line}")
+            key, raw_value = line.split("=", 1)
+            current[key.strip()] = _parse_value(raw_value)
+    except TomlError as exc:
+        return Result.err(app_error(AppErrorCode.PARSE_ERROR, str(exc)))
+    return Result.ok(data)
 
 
-def load(path: Path) -> dict[str, Any]:
-    return loads(path.read_text(encoding="utf-8"))
+def load(path: Path) -> Result[dict[str, Any], AppError]:
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return Result.err(app_error(AppErrorCode.CONFIG_ERROR, str(exc), path=str(path)))
+    return loads(content).map_err(lambda error: error.with_context(path=str(path)))
 
 
 def _format_value(value: Any) -> str:
@@ -113,14 +123,23 @@ def _dump_table(lines: list[str], path: list[str], payload: dict[str, Any]) -> N
         _dump_table(lines, path + [key], value)
 
 
-def dumps(payload: dict[str, Any]) -> str:
-    lines: list[str] = []
-    _dump_table(lines, [], payload)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    return "\n".join(lines) + "\n"
+def dumps(payload: dict[str, Any]) -> Result[str, AppError]:
+    try:
+        lines: list[str] = []
+        _dump_table(lines, [], payload)
+        while lines and not lines[-1].strip():
+            lines.pop()
+    except TomlError as exc:
+        return Result.err(app_error(AppErrorCode.PARSE_ERROR, str(exc)))
+    return Result.ok("\n".join(lines) + "\n")
 
 
-def dump(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(dumps(payload), encoding="utf-8")
-
+def dump(path: Path, payload: dict[str, Any]) -> Result[Path, AppError]:
+    dumped = dumps(payload)
+    if dumped.is_err:
+        return Result.err(dumped.error.with_context(path=str(path)))
+    try:
+        path.write_text(dumped.value, encoding="utf-8")
+    except OSError as exc:
+        return Result.err(app_error(AppErrorCode.CONFIG_ERROR, str(exc), path=str(path)))
+    return Result.ok(path)

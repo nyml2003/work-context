@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .core import Result
+from .domain.errors import AppError, AppErrorCode, app_error
 from .config import load_config, write_default_config
 from .fs import ensure_dir, write_text
 
@@ -403,20 +405,33 @@ SAMPLE_WORKSPACES = """[workspaces]
 """
 
 
-def initialize_repo(root: Path, *, include_samples: bool = False, overwrite: bool = False) -> list[Path]:
+def initialize_repo(root: Path, *, include_samples: bool = False, overwrite: bool = False) -> Result[list[Path], AppError]:
     created: list[Path] = []
-    ensure_dir(root)
-    if write_default_config(root, overwrite=overwrite):
+    try:
+        ensure_dir(root)
+    except OSError as exc:
+        return Result.err(app_error(AppErrorCode.CONFIG_ERROR, str(exc), root=str(root)))
+    wrote_config = write_default_config(root, overwrite=overwrite)
+    if wrote_config.is_err:
+        return Result.err(wrote_config.error)
+    if wrote_config.value:
         created.append(root / "workbench.toml")
-    config = load_config(root)
+    config_result = load_config(root)
+    if config_result.is_err:
+        return Result.err(config_result.error)
+    config = config_result.value
     for path in [
         config.skills_dir,
         config.templates_dir / "skill",
         config.reports_dir,
         config.workspace_config_dir,
+        config.managed_repos_dir,
     ]:
         if not path.exists():
-            ensure_dir(path)
+            try:
+                ensure_dir(path)
+            except OSError as exc:
+                return Result.err(app_error(AppErrorCode.CONFIG_ERROR, str(exc), path=str(path)))
             created.append(path)
     for relative_path, content in DEFAULT_TEMPLATES.items():
         target = root / relative_path
@@ -450,4 +465,4 @@ def initialize_repo(root: Path, *, include_samples: bool = False, overwrite: boo
             target = root / relative_path
             if write_text(target, content, overwrite=overwrite):
                 created.append(target)
-    return created
+    return Result.ok(created)

@@ -12,6 +12,8 @@
 
 运行时只使用 Python 标准库。
 
+如果你想看内部实现和分层设计，而不是 CLI 用法，见 `docs/architecture.md`。
+
 ## 这个仓库管理的 skill 长什么样
 
 每个 skill 都是一个目录，结构和 Codex 原生格式对齐：
@@ -181,8 +183,10 @@ python scripts/workbench.py local stat src\\workbench\\cli.py
 - `skill install`：`skill sync` 的别名
 - `local read/list/grep/write/append/mkdir/stat`：在当前工作目录内做跨平台本地文件操作
 - `context build`：生成一个 skill 的上下文预览
-- `workspace add`：登记外部代码仓库
+- `workspace register`：登记外部代码仓库
+- `workspace add`：`workspace register` 的兼容别名
 - `workspace check`：对登记过的仓库执行只读检查
+- `workspace remote-init`：为已登记仓库初始化或修正远程地址
 - `report generate`：生成仓库状态报告
 
 ## Skill 格式规则

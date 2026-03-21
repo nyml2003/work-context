@@ -5,6 +5,9 @@ import json
 import re
 from typing import Any
 
+from .core import Result
+from .domain.errors import AppError, AppErrorCode, app_error
+
 
 class YamlError(ValueError):
     pass
@@ -130,14 +133,17 @@ def _parse_sequence(lines: list[str], index: int, indent: int) -> tuple[list[Any
     return items, index
 
 
-def loads(content: str) -> Any:
-    lines = _clean_lines(content)
-    if not lines:
-        return {}
-    parsed, index = _parse_block(lines, 0, 0)
-    if index != len(lines):
-        raise YamlError("Trailing YAML content could not be parsed")
-    return parsed
+def loads(content: str) -> Result[Any, AppError]:
+    try:
+        lines = _clean_lines(content)
+        if not lines:
+            return Result.ok({})
+        parsed, index = _parse_block(lines, 0, 0)
+        if index != len(lines):
+            raise YamlError("Trailing YAML content could not be parsed")
+    except YamlError as exc:
+        return Result.err(app_error(AppErrorCode.PARSE_ERROR, str(exc)))
+    return Result.ok(parsed)
 
 
 def _format_scalar(value: Any, *, quote_strings: bool) -> str:
@@ -177,7 +183,10 @@ def _dump_value(value: Any, indent: int, lines: list[str], *, quote_strings: boo
     lines.append(f"{prefix}{_format_scalar(value, quote_strings=quote_strings)}")
 
 
-def dumps(value: Any, *, quote_strings: bool = True) -> str:
-    lines: list[str] = []
-    _dump_value(value, 0, lines, quote_strings=quote_strings)
-    return "\n".join(lines) + "\n"
+def dumps(value: Any, *, quote_strings: bool = True) -> Result[str, AppError]:
+    try:
+        lines: list[str] = []
+        _dump_value(value, 0, lines, quote_strings=quote_strings)
+    except YamlError as exc:
+        return Result.err(app_error(AppErrorCode.PARSE_ERROR, str(exc)))
+    return Result.ok("\n".join(lines) + "\n")

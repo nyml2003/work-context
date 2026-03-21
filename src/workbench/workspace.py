@@ -1,153 +1,81 @@
 from __future__ import annotations
 
-import shlex
-import subprocess
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
+from .application.workspace_service import WorkspaceService
 from .config import WorkbenchConfig
-from .fs import short_path
-from .simple_toml import dump, load
+from .core import Result
+from .domain.errors import AppError
+from .domain.workspace import DEFAULT_CHECK_COMMANDS, Workspace, build_remote_url, is_safe_check_command, normalize_remote_url
+
+__all__ = [
+    "DEFAULT_CHECK_COMMANDS",
+    "Workspace",
+    "add_workspace",
+    "build_remote_url",
+    "check_workspaces",
+    "initialize_workspace_remote",
+    "is_safe_check_command",
+    "load_workspaces",
+    "normalize_remote_url",
+    "register_workspace",
+]
 
 
-DANGEROUS_TOKENS = {
-    "add",
-    "am",
-    "apply",
-    "checkout",
-    "clean",
-    "clone",
-    "commit",
-    "fetch",
-    "merge",
-    "mv",
-    "pull",
-    "push",
-    "rebase",
-    "reset",
-    "restore",
-    "rm",
-    "switch",
-}
+def workspace_service(config: WorkbenchConfig) -> WorkspaceService:
+    return WorkspaceService(config)
 
 
-@dataclass
-class WorkspaceEntry:
-    name: str
-    path: str
-    default_branch: str
-    check_commands: list[str]
-
-    def resolved_path(self, root: Path) -> Path:
-        raw = Path(self.path)
-        return raw if raw.is_absolute() else (root / raw).resolve()
+def load_workspaces(config: WorkbenchConfig) -> Result[list[Workspace], AppError]:
+    return workspace_service(config).load_workspaces()
 
 
-def _load_registry(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {"workspaces": {}}
-    data = load(path)
-    workspaces = data.get("workspaces", {})
-    if not isinstance(workspaces, dict):
-        raise ValueError("Workspace registry must contain a [workspaces] table")
-    return data
-
-
-def load_workspaces(config: WorkbenchConfig) -> list[WorkspaceEntry]:
-    data = _load_registry(config.workspace_registry)
-    entries: list[WorkspaceEntry] = []
-    for name, payload in sorted(data.get("workspaces", {}).items()):
-        entries.append(
-            WorkspaceEntry(
-                name=name,
-                path=payload["path"],
-                default_branch=payload.get("default_branch", "main"),
-                check_commands=list(payload.get("check_commands", [])),
-            )
-        )
-    return entries
-
-
-def _store_registry(config: WorkbenchConfig, data: dict[str, Any]) -> None:
-    config.workspace_registry.parent.mkdir(parents=True, exist_ok=True)
-    dump(config.workspace_registry, data)
+def register_workspace(
+    config: WorkbenchConfig,
+    name: str,
+    path: str | None = None,
+    *,
+    default_branch: str = "main",
+    check_commands: list[str] | None = None,
+    remote_name: str | None = None,
+    repo_slug: str | None = None,
+) -> Result[Any, AppError]:
+    return workspace_service(config).register_workspace(
+        name,
+        path,
+        default_branch=default_branch,
+        check_commands=check_commands,
+        remote_name=remote_name,
+        repo_slug=repo_slug,
+    )
 
 
 def add_workspace(
     config: WorkbenchConfig,
     name: str,
-    path: str,
+    path: str | None = None,
     *,
     default_branch: str = "main",
     check_commands: list[str] | None = None,
-) -> Path:
-    data = _load_registry(config.workspace_registry)
-    workspaces = data.setdefault("workspaces", {})
-    target_path = Path(path)
-    if target_path.is_absolute():
-        stored_path = str(target_path)
-    else:
-        stored_path = str(Path(path).as_posix())
-    workspaces[name] = {
-        "path": stored_path,
-        "default_branch": default_branch,
-        "check_commands": check_commands or ["git status --short", "git branch --show-current"],
-    }
-    _store_registry(config, data)
-    return config.workspace_registry
+    remote_name: str | None = None,
+    repo_slug: str | None = None,
+) -> Result[Any, AppError]:
+    return register_workspace(
+        config,
+        name,
+        path,
+        default_branch=default_branch,
+        check_commands=check_commands,
+        remote_name=remote_name,
+        repo_slug=repo_slug,
+    )
 
 
-def _is_safe_command(command: str) -> tuple[bool, str]:
-    try:
-        tokens = shlex.split(command, posix=False)
-    except ValueError as exc:
-        return False, f"Invalid command syntax: {exc}"
-    lowered = [token.lower() for token in tokens]
-    for token in lowered:
-        if token in DANGEROUS_TOKENS:
-            return False, f"Command contains blocked token '{token}'"
-    return True, ""
+def check_workspaces(config: WorkbenchConfig, name: str | None = None) -> Result[dict[str, Any], AppError]:
+    return workspace_service(config).check_workspaces(name)
 
 
-def check_workspaces(config: WorkbenchConfig, name: str | None = None) -> dict[str, Any]:
-    results: list[dict[str, Any]] = []
-    for entry in load_workspaces(config):
-        if name is not None and entry.name != name:
-            continue
-        target = entry.resolved_path(config.root)
-        if not target.exists():
-            results.append({"workspace": entry.name, "status": "missing", "path": str(target)})
-            continue
-        command_results = []
-        for command in entry.check_commands:
-            safe, reason = _is_safe_command(command)
-            if not safe:
-                command_results.append({"command": command, "status": "blocked", "reason": reason})
-                continue
-            completed = subprocess.run(
-                shlex.split(command, posix=False),
-                cwd=target,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            command_results.append(
-                {
-                    "command": command,
-                    "status": "ok" if completed.returncode == 0 else "failed",
-                    "returncode": completed.returncode,
-                    "stdout": completed.stdout.strip(),
-                    "stderr": completed.stderr.strip(),
-                }
-            )
-        results.append(
-            {
-                "workspace": entry.name,
-                "path": short_path(target, config.root),
-                "default_branch": entry.default_branch,
-                "checks": command_results,
-            }
-        )
-    return {"workspace_count": len(results), "results": results}
-
+def initialize_workspace_remote(
+    config: WorkbenchConfig, name: str, *, reset_existing: bool = False
+) -> Result[dict[str, Any], AppError]:
+    return workspace_service(config).initialize_remote(name, reset_existing=reset_existing)
