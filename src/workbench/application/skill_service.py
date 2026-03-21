@@ -3,12 +3,11 @@ from __future__ import annotations
 """skill 相关的 application façade。"""
 
 from pathlib import Path
-from typing import Any
 
 from ..core import Result
 from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
-from ..domain.skill import Skill
+from ..domain.skill import Skill, SkillBundleReference, SkillLintPayload, SkillSyncRecord, SkillTestPayload
 from ..infrastructure.skill_loader import discover_skills
 from ..infrastructure.skill_packaging import pack_skill, sync_skills
 from .skill_bundle import render_bundle, test_skills
@@ -47,12 +46,12 @@ class SkillService:
             default_prompt=default_prompt,
         )
 
-    def lint_skills(self, name: str | None = None) -> Result[dict[str, Any], AppError]:
+    def lint_skills(self, name: str | None = None) -> Result[SkillLintPayload, AppError]:
         """执行 skill lint。"""
 
         return lint_skills(self.config, name)
 
-    def test_skills(self, name: str | None = None) -> Result[dict[str, Any], AppError]:
+    def test_skills(self, name: str | None = None) -> Result[SkillTestPayload, AppError]:
         """执行 skill fixture 测试。"""
 
         return test_skills(self.config, name)
@@ -68,7 +67,7 @@ class SkillService:
         name: str | None = None,
         target_root: Path | None = None,
         overwrite: bool = True,
-    ) -> Result[list[dict[str, str]], AppError]:
+    ) -> Result[list[SkillSyncRecord], AppError]:
         """把 skill 同步到目标目录。"""
 
         return sync_skills(self.config, skill_name=name, target_root=target_root, overwrite=overwrite)
@@ -89,7 +88,7 @@ class SkillService:
             return Result.err(app_error(AppErrorCode.NOT_FOUND, f"Skill not found: {name}", skill=name))
         return Result.ok(skill)
 
-    def render_bundle(self, skill: Skill) -> Result[tuple[str, list[dict[str, str]]], AppError]:
+    def render_bundle(self, skill: Skill) -> Result[tuple[str, list[SkillBundleReference]], AppError]:
         """把 skill 渲染为 bundle 文本与引用清单。"""
 
         return render_bundle(skill, self.config)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ..core import Result
 from ..domain.errors import AppError, AppErrorCode, app_error
+from ..domain.workspace import WorkspaceCheckEntry
 from .base import ArgumentSpec, CommandGroup, CommandResult, CommandSpec, RuntimeContext
 
 
@@ -18,22 +19,16 @@ def workspace_register_arguments() -> tuple[ArgumentSpec, ...]:
     )
 
 
-def workspace_check_has_failures(entry: dict[str, object]) -> bool:
+def workspace_check_has_failures(entry: WorkspaceCheckEntry) -> bool:
     """根据 check 输出判断命令是否需要返回非零退出码。"""
 
-    if entry.get("status") in {"missing", "not_git"}:
+    if entry.status in {"missing", "not_git"}:
         return True
-    git_status = entry.get("git", {}).get("status") if isinstance(entry.get("git"), dict) else None
-    if git_status not in {None, "ok"}:
+    if entry.git.status != "ok":
         return True
-    remote = entry.get("remote")
-    remote_status = remote.get("status") if isinstance(remote, dict) else None
-    if remote_status in {"missing", "mismatch", "missing_path", "not_git"}:
+    if entry.remote.status in {"missing", "mismatch", "missing_path", "not_git"}:
         return True
-    checks = entry.get("checks")
-    if not isinstance(checks, list):
-        return False
-    return any(isinstance(check, dict) and check.get("status") in {"failed", "blocked"} for check in checks)
+    return any(check.status in {"failed", "blocked"} for check in entry.checks)
 
 
 class WorkspaceCommandGroup(CommandGroup):
@@ -74,18 +69,18 @@ class WorkspaceCommandGroup(CommandGroup):
             )
             if registry.is_err:
                 return Result.err(registry.error)
-            return Result.ok(CommandResult(0, {"registry": str(registry.value), "workspace": args.name}))
+            return Result.ok(CommandResult(0, registry.value))
         if args.workspace_command == "check":
             payload = service.check_workspaces(args.name)
             if payload.is_err:
                 return Result.err(payload.error)
-            exit_code = 1 if any(workspace_check_has_failures(entry) for entry in payload.value["results"]) else 0
+            exit_code = 1 if any(workspace_check_has_failures(entry) for entry in payload.value.results) else 0
             return Result.ok(CommandResult(exit_code, payload.value))
         if args.workspace_command == "remote-init":
             payload = service.initialize_remote(args.name, reset_existing=args.reset_existing)
             if payload.is_err:
                 return Result.err(payload.error)
-            return Result.ok(CommandResult(1 if payload.value["status"] == "conflict" else 0, payload.value))
+            return Result.ok(CommandResult(1 if payload.value.status == "conflict" else 0, payload.value))
         return Result.err(
             app_error(AppErrorCode.UNSUPPORTED_COMMAND, f"Unsupported workspace command: {args.workspace_command}")
         )

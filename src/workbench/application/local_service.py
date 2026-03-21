@@ -3,10 +3,18 @@ from __future__ import annotations
 """面向 CLI 的本地文件操作应用层。"""
 
 from pathlib import Path
-from typing import Any
 
 from ..core import Result
 from ..domain.errors import AppError
+from ..domain.local import (
+    LocalAppendPayload,
+    LocalGrepPayload,
+    LocalListPayload,
+    LocalMkdirPayload,
+    LocalReadPayload,
+    LocalStatPayload,
+    LocalWritePayload,
+)
 from ..infrastructure.local_files import (
     append_local_file,
     grep_local_path,
@@ -31,7 +39,7 @@ class LocalService:
         start_line: int | None = None,
         end_line: int | None = None,
         encoding: str = "utf-8",
-    ) -> Result[dict[str, Any], AppError]:
+    ) -> Result[LocalReadPayload, AppError]:
         """读取文本文件，可选按行截取。"""
 
         return read_local_file(self.root, path, start_line=start_line, end_line=end_line, encoding=encoding)
@@ -43,7 +51,7 @@ class LocalService:
         recursive: bool = False,
         kind: str = "all",
         pattern: str | None = None,
-    ) -> Result[dict[str, Any], AppError]:
+    ) -> Result[LocalListPayload, AppError]:
         """列出边界内路径内容。"""
 
         return list_local_path(self.root, path, recursive=recursive, kind=kind, pattern=pattern)
@@ -56,7 +64,7 @@ class LocalService:
         glob: str | None = None,
         ignore_case: bool = False,
         encoding: str = "utf-8",
-    ) -> Result[dict[str, Any], AppError]:
+    ) -> Result[LocalGrepPayload, AppError]:
         """在边界内执行文本 grep。"""
 
         return grep_local_path(
@@ -70,22 +78,22 @@ class LocalService:
 
     def write_file(
         self, path: str, *, content: str, encoding: str = "utf-8", overwrite: bool = False
-    ) -> Result[dict[str, Any], AppError]:
+    ) -> Result[LocalWritePayload, AppError]:
         """写入文本文件。"""
 
         return write_local_file(self.root, path, content=content, encoding=encoding, overwrite=overwrite)
 
-    def append_file(self, path: str, *, content: str, encoding: str = "utf-8") -> Result[dict[str, Any], AppError]:
+    def append_file(self, path: str, *, content: str, encoding: str = "utf-8") -> Result[LocalAppendPayload, AppError]:
         """向文本文件追加内容。"""
 
         return append_local_file(self.root, path, content=content, encoding=encoding)
 
-    def make_dir(self, path: str, *, parents: bool = False) -> Result[dict[str, Any], AppError]:
+    def make_dir(self, path: str, *, parents: bool = False) -> Result[LocalMkdirPayload, AppError]:
         """创建目录。"""
 
         return mkdir_local_path(self.root, path, parents=parents)
 
-    def stat_path(self, path: str) -> Result[dict[str, Any], AppError]:
+    def stat_path(self, path: str) -> Result[LocalStatPayload, AppError]:
         """读取路径元数据。"""
 
         return stat_local_path(self.root, path)

@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..core import Result
+from ..domain.command_output import ArchivePathPayload, CreatedPathPayload
 from ..domain.errors import AppError, AppErrorCode, app_error
+from ..domain.skill import SkillSyncPayload
 from .base import ArgumentSpec, CommandGroup, CommandResult, CommandSpec, RuntimeContext
 
 
@@ -63,33 +65,30 @@ class SkillCommandGroup(CommandGroup):
             )
             if created.is_err:
                 return Result.err(created.error)
-            return Result.ok(CommandResult(0, {"created": str(created.value)}))
+            return Result.ok(CommandResult(0, CreatedPathPayload(created=str(created.value))))
         if args.skill_command == "lint":
             payload = service.lint_skills(args.name)
             if payload.is_err:
                 return Result.err(payload.error)
-            exit_code = 1 if any(issue["level"] == "error" for issue in payload.value["issues"]) else 0
+            exit_code = 1 if any(issue.level == "error" for issue in payload.value.issues) else 0
             return Result.ok(CommandResult(exit_code, payload.value))
         if args.skill_command == "test":
             payload = service.test_skills(args.name)
             if payload.is_err:
                 return Result.err(payload.error)
-            return Result.ok(CommandResult(1 if payload.value["failure_count"] else 0, payload.value))
+            return Result.ok(CommandResult(1 if payload.value.failure_count else 0, payload.value))
         if args.skill_command == "pack":
             output = Path(args.output).resolve() if args.output else None
             archive = service.pack_skill(args.name, output_path=output)
             if archive.is_err:
                 return Result.err(archive.error)
-            return Result.ok(CommandResult(0, {"archive": str(archive.value)}))
+            return Result.ok(CommandResult(0, ArchivePathPayload(archive=str(archive.value))))
         if args.skill_command in {"sync", "install"}:
             target = Path(args.target).expanduser().resolve() if args.target else None
             synced = service.sync_skills(name=args.name, target_root=target, overwrite=not args.no_overwrite)
             if synced.is_err:
                 return Result.err(synced.error)
-            payload = {
-                "target": str(target or services.value.config.codex_install_root),
-                "synced": synced.value,
-            }
+            payload = SkillSyncPayload(target=str(target or services.value.config.codex_install_root), synced=synced.value)
             return Result.ok(CommandResult(0, payload))
         return Result.err(app_error(AppErrorCode.UNSUPPORTED_COMMAND, f"Unsupported skill command: {args.skill_command}"))
 

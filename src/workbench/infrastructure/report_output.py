@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from ..core import Result
+from ..core.serialization import to_plain_data
 from ..domain.errors import AppError, AppErrorCode, app_error
 
 
@@ -17,10 +17,10 @@ def timestamp_slug() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
-def to_json_text(payload: Any) -> str:
+def to_json_text(payload: object) -> str:
     """输出适合 CLI 展示的 JSON 文本。"""
 
-    return json.dumps(payload, indent=2, ensure_ascii=False)
+    return json.dumps(to_plain_data(payload), indent=2, ensure_ascii=False)
 
 
 def write_markdown_report(path: Path, title: str, sections: list[tuple[str, str]]) -> Result[Path, AppError]:

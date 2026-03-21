@@ -1,32 +1,44 @@
 # Workbench 架构说明
 
-这份文档描述的是当前仓库里的实际结构，不是历史状态，也不是未来愿景图。
+这份文档描述的是当前仓库在 `2026-03-21` 的实际结构。
 
-它主要回答 4 个问题：
+重点回答 5 个问题：
 
-- 新维护者应该先看哪里
 - CLI 到业务逻辑的调用链怎么走
-- 模块分层边界是什么
-- 当前技术债具体还剩哪些
+- 现在的分层边界是什么
+- dataclass 强类型模型和 JSON/TOML/YAML 边界怎么处理
+- skill / workspace / local / context / report 这几条主链路各自落在哪里
+- 当前剩余技术债是什么
 
-## 1. 一眼看懂
+## 1. 总览
 
-`workbench` 当前是一个分层 CLI，推荐按下面的顺序建立心智模型：
+`workbench` 现在是一个分层 CLI，主结构如下：
 
 - `cli.py`
-  - 进程入口、统一 JSON 输出、命令分发
+  - 进程入口
+  - 统一 JSON 输出
+  - 命令分发
 - `composition/`
-  - 运行时装配
+  - runtime composition root
 - `commands/`
-  - 命令声明、参数协议、parser 构建
+  - 命令声明
+  - parser 构建
+  - 命令层适配
 - `application/`
   - 用例编排
 - `domain/`
-  - 领域对象、配置模型、错误语义
+  - 领域对象
+  - 强类型 payload
+  - 错误与配置语义
 - `infrastructure/`
-  - 文件、git、子进程、配置存储、注册表等外部交互
+  - 文件系统
+  - git / subprocess
+  - TOML 持久化
+  - skill 加载 / 打包
 - `core/`
-  - `Result` / `Option` 与轻量格式协议实现
+  - `Result` / `Option`
+  - 统一序列化
+  - 轻量 YAML
 
 ```mermaid
 flowchart TD
@@ -41,10 +53,11 @@ flowchart TD
     CLI --> Commands
     CLI --> Composition
     Commands --> Application
+    Commands --> Domain
     Commands --> Core
     Composition --> Application
     Composition --> Infrastructure
-    Composition --> Core
+    Composition --> Domain
     Application --> Domain
     Application --> Infrastructure
     Application --> Core
@@ -53,139 +66,153 @@ flowchart TD
     Domain --> Core
 ```
 
-主规则很简单：
+核心规则：
 
 - 外层依赖内层
 - CLI 不承载业务规则
-- 配置、文件、格式解析各自有明确落点
-- 公开边界统一走 `Result` / `Option`
+- application 负责编排，不直接暴露 `argparse`
+- domain 用 dataclass 表达业务结构和返回模型
+- 对外 JSON 统一在边界序列化，不让业务模型为了 JSON 反向污染自身
 
-## 2. 分层职责
+## 2. 当前目录职责
 
 ### `core/`
 
-这里只放跨全项目的基础协议和轻量格式能力：
+这里只保留全项目共享、且不含业务语义的基础协议：
 
-- `result.py`
+- [result.py](../src/workbench/core/result.py)
   - `Result[T, E]`
   - `Option[T]`
-- `toml.py`
-  - 受限 TOML 解析 / 序列化
-- `yaml.py`
-  - 受限 YAML 解析 / 序列化
+- [serialization.py](../src/workbench/core/serialization.py)
+  - `to_plain_data(...)`
+  - dataclass / `Path` / `Enum` 到普通数据的统一转换
+- [yaml.py](../src/workbench/core/yaml.py)
+  - 当前仓库需要的受限 YAML 子集
 
-这层不应该知道 skill、workspace、CLI 这些业务概念。
+注意：
+
+- `core/toml.py` 已移除
+- TOML 读取现在直接用标准库 `tomllib`
+- TOML 写入不做“通用 Any 序列化”，而是由具体持久化模块按显式 schema 输出
 
 ### `domain/`
 
-这里放业务语义本身，而不是参数解析或 IO 编排。
+这层承载业务语义和稳定返回模型。
 
-当前主要有：
+当前主要模块：
 
-- `config.py`
+- [config.py](../src/workbench/domain/config.py)
+  - `WorkbenchConfigDocument`
   - `WorkbenchConfig`
-- `errors.py`
+  - 各配置 section dataclass
+- [errors.py](../src/workbench/domain/errors.py)
   - `AppErrorCode`
   - `AppError`
-- `workspace.py`
-  - `Workspace`
-  - remote URL 规则
-  - check command 规则
-- `skill.py`
+  - `AppErrorDetail`
+- [skill.py](../src/workbench/domain/skill.py)
   - `Skill`
-  - skill 共享常量
+  - `SkillFrontmatter`
+  - `SkillAgentsConfig`
+  - `SkillLintPayload`
+  - `SkillTestPayload`
+- [workspace.py](../src/workbench/domain/workspace.py)
+  - `Workspace`
+  - `WorkspaceRecord`
+  - `WorkspaceCheckPayload`
+  - `WorkspaceRemoteInitPayload`
+- [local.py](../src/workbench/domain/local.py)
+  - `LocalReadPayload`
+  - `LocalListPayload`
+  - `LocalGrepPayload`
+  - `LocalWritePayload`
+- [context.py](../src/workbench/domain/context.py)
+  - `ContextPayload`
+  - `ContextBuildResult`
+- [report.py](../src/workbench/domain/report.py)
+  - `RepositoryReportPayload`
 
-这层的约束：
+当前明确约束：
 
-- 不依赖 `argparse`
-- 不直接起子进程
-- 不负责文件格式读写
+- domain 不依赖 `argparse`
+- domain 不起子进程
+- domain 不直接做 IO
+- domain 对外结构优先使用 dataclass，而不是 `dict[str, Any]`
 
 ### `infrastructure/`
 
-这里负责与外部世界交互：
+这层负责外部交互与持久化：
 
-- `config_store.py`
-- `filesystem.py`
-- `template_rendering.py`
-- `git_client.py`
-- `process_runner.py`
-- `workspace_registry.py`
-- `local_files.py`
-- `report_output.py`
-- `skill_loader.py`
-- `skill_templates.py`
-- `skill_packaging.py`
-
-这层可以做 IO，但不负责跨多个对象的业务流程编排。
+- [config_store.py](../src/workbench/infrastructure/config_store.py)
+  - `workbench.toml` 读取
+  - 显式 schema 校验
+  - 默认配置写入
+- [workspace_registry.py](../src/workbench/infrastructure/workspace_registry.py)
+  - workspace 注册表读取 / 写入
+- [filesystem.py](../src/workbench/infrastructure/filesystem.py)
+  - 文本 / JSON 文件辅助
+- [local_files.py](../src/workbench/infrastructure/local_files.py)
+  - cwd 边界内的文件操作
+- [skill_loader.py](../src/workbench/infrastructure/skill_loader.py)
+  - `SKILL.md` front matter 解析
+  - `agents/openai.yaml` 解析
+  - skill 发现
+- [skill_packaging.py](../src/workbench/infrastructure/skill_packaging.py)
+  - 打包 / sync
+- [git_client.py](../src/workbench/infrastructure/git_client.py)
+  - git remote 读取 / 设置
+- [process_runner.py](../src/workbench/infrastructure/process_runner.py)
+  - 子进程执行
+- [report_output.py](../src/workbench/infrastructure/report_output.py)
+  - JSON 文本输出
+  - Markdown report 落盘
 
 ### `application/`
 
-这里是用例层，负责把 domain 规则和 infrastructure 适配器拼起来。
+application 是用例编排层。
 
-当前主要入口：
+主要 façade：
 
-- `bootstrap_service.py`
-- `SkillService`
-- `WorkspaceService`
-- `ContextService`
-- `LocalService`
-- `ReportService`
+- [bootstrap_service.py](../src/workbench/application/bootstrap_service.py)
+- [skill_service.py](../src/workbench/application/skill_service.py)
+- [workspace_service.py](../src/workbench/application/workspace_service.py)
+- [context_service.py](../src/workbench/application/context_service.py)
+- [local_service.py](../src/workbench/application/local_service.py)
+- [report_service.py](../src/workbench/application/report_service.py)
 
-skill 相关 use case 目前主要分成：
+skill 相关纯函数用例：
 
-- `skill_creation.py`
-- `skill_validation.py`
-- `skill_bundle.py`
-
-这层的定位是：
-
-- 给命令层提供稳定入口
-- 不把命令行参数对象泄漏进来
-- 不把底层文件布局细节扩散出去
-
-### `composition/`
-
-这里是运行时 composition root。
-
-- `runtime.py`
-  - `RuntimeContext`
-  - `ServiceContainer`
-  - `build_service_container`
-
-它负责：
-
-- 加载 `WorkbenchConfig`
-- 保证基础目录存在
-- 延迟装配 service graph
-- 为 `local` 命令单独缓存 `LocalService`
+- [skill_creation.py](../src/workbench/application/skill_creation.py)
+- [skill_validation.py](../src/workbench/application/skill_validation.py)
+- [skill_bundle.py](../src/workbench/application/skill_bundle.py)
 
 ### `commands/`
 
-这里是命令层，不是业务层。
+命令层只做命令声明和调用转发。
 
 关键抽象：
 
-- `ArgumentSpec`
-- `CommandSpec`
-- `CommandGroup`
-- `CommandResult`
-- `ParserFactory`
+- [base.py](../src/workbench/commands/base.py)
+  - `ArgumentSpec`
+  - `CommandSpec`
+  - `CommandGroup`
+  - `CommandResult`
+  - `ParserFactory`
 
-每个 `*_command.py` 文件只做两件事：
+每个 `*_command.py` 只做两件事：
 
-1. 声明命令结构
-2. 把解析后的参数转交给 application service
+1. 声明命令树
+2. 把解析后的参数交给 application service
+
+### `composition/`
+
+composition root 在 [runtime.py](../src/workbench/composition/runtime.py)：
+
+- 加载 `WorkbenchConfig`
+- 确保基础目录存在
+- 延迟构建 service graph
+- 单独懒加载 `LocalService`
 
 ## 3. 启动链路
-
-CLI 启动过程在 [cli.py](/C:/Users/nyml/code/work-context/src/workbench/cli.py) 很薄：
-
-1. 调用 `load_command_groups()`
-2. 用 `ParserFactory` 构建 parser
-3. 创建 `RuntimeContext`
-4. 根据 `args.command` 找到对应 `CommandGroup`
-5. 统一输出 JSON
 
 ```mermaid
 sequenceDiagram
@@ -195,6 +222,7 @@ sequenceDiagram
     participant Factory as ParserFactory
     participant Runtime as RuntimeContext
     participant Group as CommandGroup
+    participant Service as Application Service
 
     User->>CLI: workbench ...
     CLI->>Loader: load_command_groups()
@@ -203,285 +231,288 @@ sequenceDiagram
     Factory-->>CLI: Result[argparse.ArgumentParser]
     CLI->>Runtime: RuntimeContext(cwd)
     CLI->>Group: run(args, runtime)
+    Group->>Service: typed use case call
+    Service-->>Group: Result[PayloadDataclass, AppError]
     Group-->>CLI: Result[CommandResult, AppError]
     CLI-->>User: {ok: true, value: ...} / {ok: false, err: ...}
 ```
 
-这个链路的关键点是：
+关键点：
 
-- `cli.py` 不再手工堆一大串 subparser
-- parser 冲突在构建阶段提前失败
-- 业务错误和参数错误都能走统一错误协议回传
+- `cli.py` 不再手工拼接 parser
+- parser 冲突在 `ParserFactory` 构建阶段校验
+- 命令组不直接处理 JSON 序列化
+- JSON 输出统一经过 `to_plain_data(...)`
 
-## 4. 配置与初始化链路
+## 4. 强类型模型与边界序列化
 
-这次重构后，配置和初始化已经从根级模块收口到了明确边界。
+这次重构的关键变化不是“把 dict 换成另一个 dict”，而是把应用边界改成显式 dataclass。
+
+### 内部原则
+
+- domain / application / infrastructure 之间传递强类型 dataclass
+- `AppError` 用 `AppErrorDetail` 表达上下文，而不是开放式 `context: dict[str, Any]`
+- workspace / skill / local / context / report 的 payload 全部有固定字段
+
+### 外部原则
+
+- CLI 对外仍然输出 JSON
+- JSON 结构由 [serialization.py](../src/workbench/core/serialization.py) 统一拍平
+- dataclass 不需要为了 JSON 去继承统一基类
 
 ```mermaid
 flowchart LR
-    Init["application/bootstrap_service.py"]
-    ConfigStore["infrastructure/config_store.py"]
-    ConfigDomain["domain/config.py"]
-    Fs["infrastructure/filesystem.py"]
-    CoreToml["core/toml.py"]
+    DomainModel["dataclass domain / payload"]
+    CommandResult["CommandResult(payload=object)"]
+    Serializer["to_plain_data(...)"]
+    Json["CLI JSON / JSON file"]
 
-    Init --> ConfigStore
-    Init --> Fs
-    ConfigStore --> ConfigDomain
-    ConfigStore --> CoreToml
-    ConfigStore --> Fs
+    DomainModel --> CommandResult
+    CommandResult --> Serializer
+    Serializer --> Json
 ```
 
-职责分布如下：
+当前这样设计的原因：
 
-- `domain/config.py`
-  - 运行时配置对象
-- `infrastructure/config_store.py`
-  - 默认配置
-  - `workbench.toml` 读写
-  - 基础目录布局创建
-- `application/bootstrap_service.py`
-  - 仓库初始化用例
-  - 模板与 sample skill 的落盘编排
+- Python 没有可靠的通用“JSON 魔术方法”约定
+- 如果所有 model 都继承一个序列化基类，会把领域模型和输出协议耦合起来
+- 用边界纯函数做拍平，职责最清晰
 
-这意味着根级已经不再保留：
+## 5. 配置与 TOML 持久化
 
-- `bootstrap.py`
-- `config.py`
-- `fs.py`
-- `simple_toml.py`
-- `yamlish.py`
+### 读取策略
 
-## 5. 命令是怎么接入的
+- `workbench.toml` 由 [config_store.py](../src/workbench/infrastructure/config_store.py) 使用 `tomllib.loads(...)` 读取
+- workspace 注册表由 [workspace_registry.py](../src/workbench/infrastructure/workspace_registry.py) 使用 `tomllib.loads(...)` 读取
+- 两者都做显式 schema 校验
+- 两者都拒绝未知字段
 
-[commands/__init__.py](/C:/Users/nyml/code/work-context/src/workbench/commands/__init__.py) 负责装载命令组。
+### 写入策略
 
-当前机制是命令包内约定式发现：
+- 不再保留通用 TOML writer
+- `config_store.py` 自己输出默认配置 TOML
+- `workspace_registry.py` 自己输出注册表 TOML
+- 这样写入逻辑和对应 dataclass schema 是一一绑定的
+
+```mermaid
+flowchart LR
+    ConfigDoc["WorkbenchConfigDocument"]
+    ConfigStore["config_store.py"]
+    RegistryRecord["WorkspaceRecord"]
+    RegistryStore["workspace_registry.py"]
+    Tomllib["tomllib"]
+    TomlFile["*.toml"]
+
+    TomlFile --> Tomllib
+    Tomllib --> ConfigStore
+    Tomllib --> RegistryStore
+    ConfigStore --> ConfigDoc
+    RegistryStore --> RegistryRecord
+    ConfigDoc --> ConfigStore
+    RegistryRecord --> RegistryStore
+    ConfigStore --> TomlFile
+    RegistryStore --> TomlFile
+```
+
+这也是为什么现在没有 `core/toml.py`：
+
+- TOML 读取已经有标准库
+- TOML 写入又是强 schema、场景专用
+- 放在 infrastructure 比放一个“伪通用 core 模块”更准确
+
+## 6. 主链路拆解
+
+### Skill
+
+```mermaid
+flowchart LR
+    SkillCommand["commands/skill_command.py"]
+    SkillService["application/skill_service.py"]
+    Validation["application/skill_validation.py"]
+    Bundle["application/skill_bundle.py"]
+    Creation["application/skill_creation.py"]
+    Loader["infrastructure/skill_loader.py"]
+    Packaging["infrastructure/skill_packaging.py"]
+    SkillDomain["domain/skill.py"]
+    YamlCore["core/yaml.py"]
+
+    SkillCommand --> SkillService
+    SkillService --> Validation
+    SkillService --> Bundle
+    SkillService --> Creation
+    SkillService --> Loader
+    SkillService --> Packaging
+    Validation --> SkillDomain
+    Bundle --> SkillDomain
+    Loader --> SkillDomain
+    Loader --> YamlCore
+```
+
+当前重点变化：
+
+- `Skill.frontmatter` 不再是 `dict[str, Any]`
+- `Skill.agents_config` 不再是 `dict[str, Any]`
+- lint / test / sync 返回值都是 dataclass
+
+### Workspace
+
+```mermaid
+flowchart LR
+    WorkspaceCommand["commands/workspace_command.py"]
+    WorkspaceService["application/workspace_service.py"]
+    Registry["infrastructure/workspace_registry.py"]
+    Git["infrastructure/git_client.py"]
+    Runner["infrastructure/process_runner.py"]
+    WorkspaceDomain["domain/workspace.py"]
+
+    WorkspaceCommand --> WorkspaceService
+    WorkspaceService --> Registry
+    WorkspaceService --> Git
+    WorkspaceService --> Runner
+    Registry --> WorkspaceDomain
+    Git --> WorkspaceDomain
+```
+
+当前重点变化：
+
+- 注册表记录使用 `WorkspaceRecord`
+- `check` 结果使用 `WorkspaceCheckPayload`
+- `remote-init` 结果使用 `WorkspaceRemoteInitPayload`
+
+### Local
+
+```mermaid
+flowchart LR
+    LocalCommand["commands/local_command.py"]
+    LocalService["application/local_service.py"]
+    LocalFiles["infrastructure/local_files.py"]
+    LocalDomain["domain/local.py"]
+
+    LocalCommand --> LocalService
+    LocalService --> LocalFiles
+    LocalFiles --> LocalDomain
+```
+
+当前重点变化：
+
+- 读 / 列 / grep / 写 / 追加 / mkdir / stat 都有固定 dataclass payload
+- boundary 错误统一归并到 `AppError`
+
+### Context
+
+```mermaid
+flowchart LR
+    ContextCommand["commands/context_command.py"]
+    ContextService["application/context_service.py"]
+    SkillService["application/skill_service.py"]
+    WorkspaceService["application/workspace_service.py"]
+    ContextDomain["domain/context.py"]
+
+    ContextCommand --> ContextService
+    ContextService --> SkillService
+    ContextService --> WorkspaceService
+    ContextService --> ContextDomain
+```
+
+### Report
+
+```mermaid
+flowchart LR
+    ReportCommand["commands/report_command.py"]
+    ReportService["application/report_service.py"]
+    SkillService["application/skill_service.py"]
+    WorkspaceService["application/workspace_service.py"]
+    ReportOutput["infrastructure/report_output.py"]
+    ReportDomain["domain/report.py"]
+
+    ReportCommand --> ReportService
+    ReportService --> SkillService
+    ReportService --> WorkspaceService
+    ReportService --> ReportOutput
+    ReportService --> ReportDomain
+```
+
+## 7. 命令接入方式
+
+[commands/__init__.py](../src/workbench/commands/__init__.py) 仍然采用约定式发现：
 
 - 扫描 `commands/` 下模块
 - 跳过 `base.py`
 - 导入模块
-- 收集模块导出的 `COMMAND_GROUP`
+- 收集 `COMMAND_GROUP`
 - 按 `(order, name)` 排序
 
-新增一级命令的标准做法是：
+新增一级命令的标准方式：
 
 1. 新建一个 `*_command.py`
 2. 暴露 `COMMAND_GROUP`
-3. 让装载器发现它
+3. 让 loader 自动发现
 
-而不是继续去改 `cli.py`。
+不需要再改 `cli.py`。
 
-```mermaid
-flowchart LR
-    Modules["commands/*.py"]
-    Loader["load_command_groups()"]
-    Group["COMMAND_GROUP"]
-    Parser["ParserFactory"]
+## 8. 现在已经移除的旧结构
 
-    Modules --> Loader
-    Loader --> Group
-    Group --> Parser
-```
+根级旧兼容模块已经移除：
 
-## 6. 主要业务链路
+- `bootstrap.py`
+- `config.py`
+- `context.py`
+- `fs.py`
+- `localops.py`
+- `report.py`
+- `skilllib.py`
+- `simple_toml.py`
+- `workspace.py`
+- `yamlish.py`
 
-### Skill 链路
+这轮又继续移除了：
 
-```mermaid
-flowchart LR
-    SkillService["application/skill_service.py"]
-    Creation["application/skill_creation.py"]
-    Validation["application/skill_validation.py"]
-    Bundle["application/skill_bundle.py"]
-    Loader["infrastructure/skill_loader.py"]
-    Packaging["infrastructure/skill_packaging.py"]
-    Templates["infrastructure/skill_templates.py"]
-    SkillDomain["domain/skill.py"]
-    ConfigDomain["domain/config.py"]
-    CoreYaml["core/yaml.py"]
+- `core/toml.py`
 
-    SkillService --> Creation
-    SkillService --> Validation
-    SkillService --> Bundle
-    SkillService --> Loader
-    SkillService --> Packaging
-    Creation --> Templates
-    Creation --> SkillDomain
-    Creation --> ConfigDomain
-    Creation --> CoreYaml
-    Validation --> Loader
-    Validation --> SkillDomain
-    Validation --> ConfigDomain
-    Bundle --> Loader
-    Bundle --> SkillDomain
-    Bundle --> ConfigDomain
-    Loader --> CoreYaml
-```
-
-职责分布如下：
-
-- `SkillService`
-  - application façade
-  - 对命令层暴露稳定接口
-- `skill_creation.py`
-  - 创建 skill 脚手架
-- `skill_validation.py`
-  - lint 编排
-  - lint 规则收集
-  - skill 结果投影
-- `skill_bundle.py`
-  - bundle 渲染
-  - fixture 执行
-- `skill_loader.py`
-  - 发现 skill
-  - 解析 `SKILL.md`
-  - 读取 `agents/openai.yaml`
-- `skill_packaging.py`
-  - 打包与同步
-
-### Workspace 链路
-
-[workspace_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/workspace_service.py) 负责编排：
-
-- workspace 注册
-- safe check 执行
-- git remote 状态比对
-- remote 初始化 / 修复
-
-它依赖的主要基础设施是：
-
-- [workspace_registry.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/workspace_registry.py)
-- [git_client.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/git_client.py)
-- [process_runner.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/process_runner.py)
-
-### Context 链路
-
-[context_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/context_service.py) 会编排：
-
-- `SkillService.find_skill`
-- `SkillService.render_bundle`
-- 可选的 `WorkspaceService.get_workspace`
-
-它既能返回 payload，也能直接写出 `.json` / `.md` 文件。
-
-### Local 链路
-
-`local` 这条链当前是：
-
-- [local_command.py](/C:/Users/nyml/code/work-context/src/workbench/commands/local_command.py)
-- [local_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/local_service.py)
-- [local_files.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/local_files.py)
-
-`LocalService` 很薄，主要作用是把命令层调用转成稳定应用接口。
-
-`local_files.py` 当前承担：
-
-- boundary 检查
-- 文件读写
-- grep
-- list
-- mkdir
-- stat
-
-### Report 链路
-
-[report_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/report_service.py) 当前是轻量编排器：
-
-- 先跑 skill lint
-- 再读 workspace 列表
-- 最后调用 [report_output.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/report_output.py) 写 Markdown report
-
-## 7. 根级模块的现状
-
-当前根目录只保留真正的包入口：
-
-- [__init__.py](/C:/Users/nyml/code/work-context/src/workbench/__init__.py)
-- [__main__.py](/C:/Users/nyml/code/work-context/src/workbench/__main__.py)
-- [cli.py](/C:/Users/nyml/code/work-context/src/workbench/cli.py)
-
-过去的兼容 façade 和根级基础模块都已经删除。
-
-这意味着现在如果要引用实现，应直接从分层目录进入：
-
-- 配置模型走 `domain/config.py`
-- 配置存储走 `infrastructure/config_store.py`
-- 仓库初始化走 `application/bootstrap_service.py`
-- 文件系统辅助走 `infrastructure/filesystem.py`
-- 格式协议走 `core/toml.py` / `core/yaml.py`
-
-## 8. 统一返回协议
-
-项目公开边界统一走 `Result` / `Option`：
-
-- 成功：`Result.ok(value)`
-- 失败：`Result.err(AppError(...))`
-- 缺失但不是错误：`Option.none()`
-
-CLI 输出协议固定为：
-
-```json
-{"ok": true, "value": {...}}
-```
-
-```json
-{"ok": false, "err": {"code": "...", "message": "...", "context": {...}}}
-```
-
-这样命令层、业务流程和基础设施失败都能用同一套结构回传。
+当前如果要找实现，请直接从分层目录进入，不要再找根级薄封装。
 
 ## 9. 当前技术债
 
-下面这些是现在仍然真实存在的技术债。
+当前剩余技术债主要还有这些：
+
+### `commands/base.py` 里的 parser 参数声明仍是偏工程化协议
+
+它已经比直接透传 `subparsers` 好很多，但 `ArgumentSpec.kwargs` 仍是对 `argparse` 的一层薄包装。
 
 ### `local_files.py` 仍然偏大
 
-虽然已经迁到 infrastructure，但 boundary 校验、读写、grep、list、stat 仍集中在一个模块里。
+虽然返回模型已经类型化，但 boundary 校验、目录遍历、grep、写入、状态读取还集中在同一个模块里。
 
-### `skill_validation.py` 现在承担的职责偏多
+### `skill_creation.py` / `template_rendering.py` 还是偏模板脚手架式写法
 
-为了把 lint 规则从 domain 清出去，`skill_validation.py` 目前同时承担：
+它们的问题不是类型不清晰，而是“脚手架上下文”和“模板渲染策略”还没有进一步抽象为更明确的小模型。
 
-- lint 编排
-- issue 规则收集
-- skill 结果投影
+## 10. 建议后续演进顺序
 
-这比原来的层次更正确，但后续仍值得继续拆成更清晰的纯函数模块。
-
-### 某些 service 仍偏 façade
-
-以 `SkillService`、`LocalService` 为例，它们现在承担的是稳定应用边界，但内部仍有不少直接转调。
-
-这不是错误，但后续仍要持续判断：
-
-- 哪些 façade 值得保留
-- 哪些能力应该继续细化成显式 use case 函数
-
-## 10. 建议下一步
-
-按当前结构，下一阶段最合理的顺序是：
+比较合理的下一步顺序：
 
 1. 继续拆 `local_files.py`
-2. 把 `skill_validation.py` 的规则收集与结果投影拆成更清晰的纯函数模块
-3. 视收益再决定是否进一步细分 façade service 与 use case 函数边界
+2. 给 `skill_creation.py` 的模板上下文补 dataclass 模型
+3. 视收益决定是否把 `commands/base.py` 的 `ArgumentSpec.kwargs` 再收成更显式的参数对象
+4. 如果后面出现第二套边界投影需求，再考虑在 `to_plain_data(...)` 之上补 `Protocol`
 
 当前不建议做的事：
 
-- 再把命令注册逻辑塞回 `cli.py`
-- 为了“纯函数化”而引入过度抽象
-- 在没有明确收益时把模块拆得过碎
+- 为了“统一”强行让所有 dataclass 继承一个序列化基类
+- 把 TOML 再抽回一个伪通用 `core/toml.py`
+- 为了更“纯”而把 application service 拆成过碎文件
 
-## 11. 阅读顺序
+## 11. 建议阅读顺序
 
-第一次接手这个仓库，建议这样看：
+第一次接手这个仓库，建议按这个顺序看：
 
-1. [cli.py](/C:/Users/nyml/code/work-context/src/workbench/cli.py)
-2. [runtime.py](/C:/Users/nyml/code/work-context/src/workbench/composition/runtime.py)
-3. [base.py](/C:/Users/nyml/code/work-context/src/workbench/commands/base.py)
-4. [config_store.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/config_store.py)
-5. [bootstrap_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/bootstrap_service.py)
-6. [workspace_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/workspace_service.py)
-7. [skill_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/skill_service.py)
-8. [workspace.py](/C:/Users/nyml/code/work-context/src/workbench/domain/workspace.py)
-9. [skill.py](/C:/Users/nyml/code/work-context/src/workbench/domain/skill.py)
-10. [result.py](/C:/Users/nyml/code/work-context/src/workbench/core/result.py)
+1. [cli.py](../src/workbench/cli.py)
+2. [runtime.py](../src/workbench/composition/runtime.py)
+3. [base.py](../src/workbench/commands/base.py)
+4. [serialization.py](../src/workbench/core/serialization.py)
+5. [config_store.py](../src/workbench/infrastructure/config_store.py)
+6. [workspace_registry.py](../src/workbench/infrastructure/workspace_registry.py)
+7. [workspace_service.py](../src/workbench/application/workspace_service.py)
+8. [skill_loader.py](../src/workbench/infrastructure/skill_loader.py)
+9. [skill.py](../src/workbench/domain/skill.py)
+10. [result.py](../src/workbench/core/result.py)

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from ..core import Result
+from ..core.serialization import to_plain_data
 from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError
+from ..domain.report import RepositoryReportPayload, RepositoryReportSummary, WorkspaceReportSummary
 from ..infrastructure.report_output import timestamp_slug, write_markdown_report
 from .skill_service import SkillService
 from .workspace_service import WorkspaceService
@@ -28,7 +29,7 @@ class ReportService:
         self.skill_service = skill_service or SkillService(config)
         self.workspace_service = workspace_service or WorkspaceService(config)
 
-    def generate_report(self, *, output: Path | None = None) -> Result[dict[str, Any], AppError]:
+    def generate_report(self, *, output: Path | None = None) -> Result[RepositoryReportPayload, AppError]:
         """生成 Markdown 报告，并返回结构化摘要。"""
 
         lint_payload = self.skill_service.lint_skills()
@@ -37,17 +38,14 @@ class ReportService:
         workspaces = self.workspace_service.load_workspaces()
         if workspaces.is_err:
             return Result.err(workspaces.error)
-        workspace_payload = {"workspaces": [entry.name for entry in workspaces.value]}
-        report_payload = {
-            "skills": lint_payload.value,
-            "workspace_summary": workspace_payload,
-        }
+        workspace_payload = WorkspaceReportSummary(workspaces=[entry.name for entry in workspaces.value])
+        report_payload = RepositoryReportSummary(skills=lint_payload.value, workspace_summary=workspace_payload)
         target = output or (self.config.reports_dir / f"status-{timestamp_slug()}.md")
         sections = [
-            ("Skill Lint", json.dumps(lint_payload.value, indent=2, ensure_ascii=False)),
-            ("Workspaces", json.dumps(workspace_payload, indent=2, ensure_ascii=False)),
+            ("Skill Lint", json.dumps(to_plain_data(lint_payload.value), indent=2, ensure_ascii=False)),
+            ("Workspaces", json.dumps(to_plain_data(workspace_payload), indent=2, ensure_ascii=False)),
         ]
         written = write_markdown_report(target, "Codex Skills Repository Report", sections)
         if written.is_err:
             return Result.err(written.error)
-        return Result.ok({"report": str(written.value), "summary": report_payload})
+        return Result.ok(RepositoryReportPayload(report=str(written.value), summary=report_payload))

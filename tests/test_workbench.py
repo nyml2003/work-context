@@ -133,26 +133,23 @@ class WorkbenchTestCase(unittest.TestCase):
     def test_lint_and_skill_tests_pass(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
         service = SkillService(config)
-        self.assertEqual(expect_ok(service.lint_skills())["issue_count"], 0)
-        self.assertEqual(expect_ok(service.test_skills())["failure_count"], 0)
+        self.assertEqual(expect_ok(service.lint_skills()).issue_count, 0)
+        self.assertEqual(expect_ok(service.test_skills()).failure_count, 0)
 
     def test_context_payload_contains_references(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
         payload = expect_ok(ContextService(config).build_context_payload("codex-skill-authoring"))
-        self.assertIn("bundle_markdown", payload)
-        self.assertIn("Validation Checklist", payload["bundle_markdown"])
+        self.assertIn("Validation Checklist", payload.bundle_markdown)
 
     def test_context_payload_contains_validation_flow(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
         payload = expect_ok(ContextService(config).build_context_payload("skill-validation"))
-        self.assertIn("bundle_markdown", payload)
-        self.assertIn("python scripts/workbench.py skill lint <name>", payload["bundle_markdown"])
+        self.assertIn("python scripts/workbench.py skill lint <name>", payload.bundle_markdown)
 
     def test_context_payload_contains_local_cli_references(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
         payload = expect_ok(ContextService(config).build_context_payload("local-cli-operations"))
-        self.assertIn("bundle_markdown", payload)
-        self.assertIn("python scripts/workbench.py local read <path>", payload["bundle_markdown"])
+        self.assertIn("python scripts/workbench.py local read <path>", payload.bundle_markdown)
 
     def test_sync_skills_to_custom_target(self) -> None:
         root = make_temp_dir()
@@ -166,10 +163,12 @@ class WorkbenchTestCase(unittest.TestCase):
         root = make_temp_dir()
         expect_ok(initialize_repo(root, include_samples=True))
         output = root / "reports" / "context.json"
+        stdout = StringIO()
         old_cwd = Path.cwd()
         try:
             os.chdir(root)
-            code = main(["context", "build", "codex-skill-authoring", "--format", "json", "--output", str(output)])
+            with redirect_stdout(stdout):
+                code = main(["context", "build", "codex-skill-authoring", "--format", "json", "--output", str(output)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(code, 0)
@@ -183,8 +182,8 @@ class WorkbenchTestCase(unittest.TestCase):
         service = WorkspaceService(config)
         expect_ok(service.register_workspace("self", ".", check_commands=["python --version"]))
         payload = expect_ok(service.check_workspaces("self"))
-        self.assertEqual(payload["workspace_count"], 1)
-        self.assertEqual(payload["results"][0]["checks"][0]["status"], "ok")
+        self.assertEqual(payload.workspace_count, 1)
+        self.assertEqual(payload.results[0].checks[0].status, "ok")
 
     def test_discover_skills_returns_codex_skill(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))

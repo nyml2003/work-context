@@ -6,10 +6,25 @@ import fnmatch
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TypeVar
 
 from ..core import Result
 from ..domain.errors import AppError, AppErrorCode, app_error
+from ..domain.local import (
+    LocalAppendPayload,
+    LocalGrepMatch,
+    LocalGrepPayload,
+    LocalListEntry,
+    LocalListPayload,
+    LocalMkdirPayload,
+    LocalPathRecord,
+    LocalReadPayload,
+    LocalSkippedFile,
+    LocalStatPayload,
+    LocalWritePayload,
+)
+
+PayloadT = TypeVar("PayloadT")
 
 
 def normalized_root(root: Path) -> Path:
@@ -27,16 +42,16 @@ def path_label(path: Path, root: Path) -> str:
         return path.as_posix()
 
 
-def path_record(path: Path, root: Path) -> dict[str, str]:
+def path_record(path: Path, root: Path) -> LocalPathRecord:
     """为 CLI 输出构造统一的路径字段。"""
 
-    return {
-        "path": path_label(path, root),
-        "resolved_path": str(path),
-    }
+    return LocalPathRecord(
+        path=path_label(path, root),
+        resolved_path=str(path),
+    )
 
 
-def result_from_path_exception(raw_path: str, exc: Exception) -> Result[dict[str, Any], AppError]:
+def result_from_path_exception(raw_path: str, exc: Exception) -> Result[PayloadT, AppError]:
     """把常见路径异常收敛为统一的 AppError。"""
 
     if isinstance(exc, ValueError):
@@ -114,7 +129,7 @@ def read_local_file(
     start_line: int | None = None,
     end_line: int | None = None,
     encoding: str = "utf-8",
-) -> Result[dict[str, Any], AppError]:
+) -> Result[LocalReadPayload, AppError]:
     """读取边界内的文本文件。"""
 
     try:
@@ -128,15 +143,17 @@ def read_local_file(
         content = "".join(lines[start_index:end_index])
     except (ValueError, FileExistsError, FileNotFoundError, IsADirectoryError, OSError) as exc:
         return result_from_path_exception(raw_path, exc)
+    record = path_record(path, root)
     return Result.ok(
-        {
-            **path_record(path, root),
-            "encoding": encoding,
-            "line_count": len(lines),
-            "start_line": start_line or (1 if lines else 0),
-            "end_line": end_line if end_line is not None else len(lines),
-            "content": content,
-        }
+        LocalReadPayload(
+            path=record.path,
+            resolved_path=record.resolved_path,
+            encoding=encoding,
+            line_count=len(lines),
+            start_line=start_line or (1 if lines else 0),
+            end_line=end_line if end_line is not None else len(lines),
+            content=content,
+        )
     )
 
 
@@ -147,7 +164,7 @@ def list_local_path(
     recursive: bool = False,
     kind: str = "all",
     pattern: str | None = None,
-) -> Result[dict[str, Any], AppError]:
+) -> Result[LocalListPayload, AppError]:
     """列出边界内路径内容。"""
 
     try:
@@ -160,31 +177,33 @@ def list_local_path(
         else:
             iterated = [target]
             match_root = target.parent
-        entries: list[dict[str, Any]] = []
+        entries: list[LocalListEntry] = []
         for item in sorted_paths(iterated):
             entry_type = "dir" if item.is_dir() else "file" if item.is_file() else "other"
             if kind != "all" and entry_type != kind:
                 continue
             if pattern and not matches_glob(item, match_root, pattern):
                 continue
-            entry: dict[str, Any] = {
-                **path_record(item, root),
-                "type": entry_type,
-            }
-            if item.is_file():
-                entry["size"] = item.stat().st_size
-            entries.append(entry)
+            record = path_record(item, root)
+            entries.append(
+                LocalListEntry(
+                    path=record.path,
+                    resolved_path=record.resolved_path,
+                    type=entry_type,
+                    size=item.stat().st_size if item.is_file() else None,
+                )
+            )
     except (ValueError, FileNotFoundError, OSError) as exc:
         return result_from_path_exception(raw_path, exc)
     return Result.ok(
-        {
-            "target": path_record(target, root),
-            "recursive": recursive,
-            "kind": kind,
-            "pattern": pattern,
-            "count": len(entries),
-            "entries": entries,
-        }
+        LocalListPayload(
+            target=path_record(target, root),
+            recursive=recursive,
+            kind=kind,
+            pattern=pattern,
+            count=len(entries),
+            entries=entries,
+        )
     )
 
 
@@ -196,7 +215,7 @@ def grep_local_path(
     glob: str | None = None,
     ignore_case: bool = False,
     encoding: str = "utf-8",
-) -> Result[dict[str, Any], AppError]:
+) -> Result[LocalGrepPayload, AppError]:
     """在边界内对文本文件执行正则搜索。"""
 
     try:
@@ -209,8 +228,8 @@ def grep_local_path(
             ensure_text_file(target)
             files = [target]
             match_root = target.parent
-        matches: list[dict[str, Any]] = []
-        skipped_files: list[dict[str, str]] = []
+        matches: list[LocalGrepMatch] = []
+        skipped_files: list[LocalSkippedFile] = []
         files_scanned = 0
         for file_path in files:
             if glob and not matches_glob(file_path, match_root, glob):
@@ -219,33 +238,33 @@ def grep_local_path(
             try:
                 lines = file_path.read_text(encoding=encoding).splitlines()
             except UnicodeDecodeError as exc:
-                skipped_files.append({"path": path_label(file_path, root), "reason": str(exc)})
+                skipped_files.append(LocalSkippedFile(path=path_label(file_path, root), reason=str(exc)))
                 continue
             for line_number, line in enumerate(lines, start=1):
                 if regex.search(line):
                     matches.append(
-                        {
-                            "path": path_label(file_path, root),
-                            "line_number": line_number,
-                            "line": line,
-                        }
+                        LocalGrepMatch(
+                            path=path_label(file_path, root),
+                            line_number=line_number,
+                            line=line,
+                        )
                     )
     except re.error as exc:
         return Result.err(app_error(AppErrorCode.INVALID_ARGUMENT, str(exc), pattern=pattern))
     except (ValueError, FileNotFoundError, IsADirectoryError, OSError) as exc:
         return result_from_path_exception(raw_path, exc)
     return Result.ok(
-        {
-            "target": path_record(target, root),
-            "pattern": pattern,
-            "glob": glob,
-            "ignore_case": ignore_case,
-            "encoding": encoding,
-            "files_scanned": files_scanned,
-            "match_count": len(matches),
-            "matches": matches,
-            "skipped_files": skipped_files,
-        }
+        LocalGrepPayload(
+            target=path_record(target, root),
+            pattern=pattern,
+            glob=glob,
+            ignore_case=ignore_case,
+            encoding=encoding,
+            files_scanned=files_scanned,
+            match_count=len(matches),
+            matches=matches,
+            skipped_files=skipped_files,
+        )
     )
 
 
@@ -256,7 +275,7 @@ def write_local_file(
     content: str,
     encoding: str = "utf-8",
     overwrite: bool = False,
-) -> Result[dict[str, Any], AppError]:
+) -> Result[LocalWritePayload, AppError]:
     """写入文本文件，默认拒绝覆盖已有文件。"""
 
     try:
@@ -270,14 +289,16 @@ def write_local_file(
         path.write_text(content, encoding=encoding)
     except (ValueError, FileExistsError, IsADirectoryError, OSError) as exc:
         return result_from_path_exception(raw_path, exc)
+    record = path_record(path, root)
     return Result.ok(
-        {
-            **path_record(path, root),
-            "encoding": encoding,
-            "created": not existed,
-            "overwrote": existed,
-            "size": path.stat().st_size,
-        }
+        LocalWritePayload(
+            path=record.path,
+            resolved_path=record.resolved_path,
+            encoding=encoding,
+            created=not existed,
+            overwrote=existed,
+            size=path.stat().st_size,
+        )
     )
 
 
@@ -287,7 +308,7 @@ def append_local_file(
     *,
     content: str,
     encoding: str = "utf-8",
-) -> Result[dict[str, Any], AppError]:
+) -> Result[LocalAppendPayload, AppError]:
     """向文本文件追加内容。"""
 
     try:
@@ -300,18 +321,20 @@ def append_local_file(
             handle.write(content)
     except (ValueError, IsADirectoryError, OSError) as exc:
         return result_from_path_exception(raw_path, exc)
+    record = path_record(path, root)
     return Result.ok(
-        {
-            **path_record(path, root),
-            "encoding": encoding,
-            "created": not existed,
-            "appended_characters": len(content),
-            "size": path.stat().st_size,
-        }
+        LocalAppendPayload(
+            path=record.path,
+            resolved_path=record.resolved_path,
+            encoding=encoding,
+            created=not existed,
+            appended_characters=len(content),
+            size=path.stat().st_size,
+        )
     )
 
 
-def mkdir_local_path(root: Path, raw_path: str, *, parents: bool = False) -> Result[dict[str, Any], AppError]:
+def mkdir_local_path(root: Path, raw_path: str, *, parents: bool = False) -> Result[LocalMkdirPayload, AppError]:
     """在边界内创建目录。"""
 
     try:
@@ -322,16 +345,18 @@ def mkdir_local_path(root: Path, raw_path: str, *, parents: bool = False) -> Res
         path.mkdir(parents=parents, exist_ok=True)
     except (ValueError, FileExistsError, OSError) as exc:
         return result_from_path_exception(raw_path, exc)
+    record = path_record(path, root)
     return Result.ok(
-        {
-            **path_record(path, root),
-            "parents": parents,
-            "created": not existed,
-        }
+        LocalMkdirPayload(
+            path=record.path,
+            resolved_path=record.resolved_path,
+            parents=parents,
+            created=not existed,
+        )
     )
 
 
-def stat_local_path(root: Path, raw_path: str) -> Result[dict[str, Any], AppError]:
+def stat_local_path(root: Path, raw_path: str) -> Result[LocalStatPayload, AppError]:
     """读取路径元数据。"""
 
     try:
@@ -340,15 +365,17 @@ def stat_local_path(root: Path, raw_path: str) -> Result[dict[str, Any], AppErro
         entry_type = "dir" if path.is_dir() else "file" if path.is_file() else "other"
     except (ValueError, FileNotFoundError, OSError) as exc:
         return result_from_path_exception(raw_path, exc)
+    record = path_record(path, root)
     return Result.ok(
-        {
-            **path_record(path, root),
-            "type": entry_type,
-            "size": stat_result.st_size,
-            "is_symlink": path.is_symlink(),
-            "modified_at": datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc).isoformat(),
-            "created_at": datetime.fromtimestamp(stat_result.st_ctime, tz=timezone.utc).isoformat(),
-        }
+        LocalStatPayload(
+            path=record.path,
+            resolved_path=record.resolved_path,
+            type=entry_type,
+            size=stat_result.st_size,
+            is_symlink=path.is_symlink(),
+            modified_at=datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc).isoformat(),
+            created_at=datetime.fromtimestamp(stat_result.st_ctime, tz=timezone.utc).isoformat(),
+        )
     )
 
 

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
 
 from .commands import load_command_groups
 from .commands.base import CommandGroup, ParserFactory
@@ -22,7 +21,7 @@ def repo_root() -> Path:
     return Path.cwd()
 
 
-def print_payload(payload: Any) -> None:
+def print_payload(payload: object) -> None:
     """统一输出 JSON，保证所有命令的机器可读边界一致。"""
 
     print(to_json_text(payload))
@@ -31,11 +30,11 @@ def print_payload(payload: Any) -> None:
 def print_error(error: AppError) -> int:
     """将领域错误规范化为统一的 CLI 失败载荷。"""
 
-    print_payload({"ok": False, "err": error.to_dict()})
+    print_payload({"ok": False, "err": error.to_payload()})
     return 1
 
 
-def print_success(payload: Any) -> None:
+def print_success(payload: object) -> None:
     """将成功结果包装成统一协议。"""
 
     print_payload({"ok": True, "value": payload})

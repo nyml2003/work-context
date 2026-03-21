@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
+from ..core.serialization import JsonValue, to_plain_data
 
 def ensure_dir(path: Path) -> Path:
     """确保目录存在。"""
@@ -24,14 +24,14 @@ def write_text(path: Path, content: str, *, overwrite: bool = False) -> bool:
     return True
 
 
-def write_json(path: Path, payload: Any) -> None:
+def write_json(path: Path, payload: object) -> None:
     """写入格式化 JSON。"""
 
     ensure_dir(path.parent)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(to_plain_data(payload), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def read_json(path: Path) -> Any:
+def read_json(path: Path) -> JsonValue:
     """读取 UTF-8 JSON 文件。"""
 
     return json.loads(path.read_text(encoding="utf-8"))

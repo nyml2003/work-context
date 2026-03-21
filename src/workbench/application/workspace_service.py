@@ -2,13 +2,19 @@ from __future__ import annotations
 
 """workspace 相关的 application service。"""
 
-from typing import Any
-
 from ..core import Result
 from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
 from ..domain.workspace import (
+    DEFAULT_CHECK_COMMANDS,
     Workspace,
+    WorkspaceCheckCommandPayload,
+    WorkspaceCheckEntry,
+    WorkspaceCheckPayload,
+    WorkspaceGitPayload,
+    WorkspaceRegistrationPayload,
+    WorkspaceRemoteInitPayload,
+    WorkspaceRemotePayload,
     build_remote_url,
     is_safe_check_command,
     normalize_remote_url,
@@ -53,30 +59,47 @@ class WorkspaceService:
         check_commands: list[str] | None = None,
         remote_name: str | None = None,
         repo_slug: str | None = None,
-    ) -> Result[Any, AppError]:
+    ) -> Result[WorkspaceRegistrationPayload, AppError]:
         """注册一个 workspace。
 
         未显式提供路径时，会落到受管目录 `managed_repos_dir` 下。
         """
 
         target = resolve_workspace_target(self.config.root, self.config.managed_repos_dir, name, path)
+        commands = list(check_commands or DEFAULT_CHECK_COMMANDS)
         workspace = Workspace(
             name=name,
             path=short_path(target, self.config.root).replace("\\", "/"),
             default_branch=default_branch,
-            check_commands=list(check_commands or []),
+            check_commands=commands,
             remote_name=remote_name or self.config.default_remote_name,
             repo_slug=repo_slug or name,
         )
-        if not workspace.check_commands:
-            # 默认检查命令保持只读，避免 `check` 隐式修改仓库状态。
-            workspace.check_commands = ["git status --short", "git branch --show-current"]
-        return self.registry.save_workspace(workspace)
+        saved = self.registry.save_workspace(workspace)
+        if saved.is_err:
+            return Result.err(saved.error)
+        return Result.ok(WorkspaceRegistrationPayload(registry=str(saved.value), workspace=name))
 
-    def add_workspace(self, *args: Any, **kwargs: Any) -> Result[Any, AppError]:
+    def add_workspace(
+        self,
+        name: str,
+        path: str | None = None,
+        *,
+        default_branch: str = "main",
+        check_commands: list[str] | None = None,
+        remote_name: str | None = None,
+        repo_slug: str | None = None,
+    ) -> Result[WorkspaceRegistrationPayload, AppError]:
         """兼容旧命名，实际仍走 `register_workspace`。"""
 
-        return self.register_workspace(*args, **kwargs)
+        return self.register_workspace(
+            name,
+            path,
+            default_branch=default_branch,
+            check_commands=check_commands,
+            remote_name=remote_name,
+            repo_slug=repo_slug,
+        )
 
     def get_workspace(self, name: str) -> Result[Workspace, AppError]:
         """按名称读取单个 workspace。"""
@@ -89,118 +112,129 @@ class WorkspaceService:
             return Result.err(app_error(AppErrorCode.NOT_FOUND, f"Workspace not found: {name}", workspace=name))
         return Result.ok(workspace)
 
-    def resolve_remote_status(self, workspace: Workspace, git_ok: bool) -> Result[dict[str, Any], AppError]:
+    def resolve_remote_status(self, workspace: Workspace, git_ok: bool) -> Result[WorkspaceRemotePayload, AppError]:
         """比较期望远程地址与实际远程地址，生成状态摘要。"""
 
         expected_url = workspace.expected_remote_url(self.config.github_remote_prefix)
-        result: dict[str, Any] = {
-            "remote_name": workspace.remote_name,
-            "repo_slug": workspace.repo_slug,
-        }
-        if expected_url.is_some:
-            result["expected_url"] = expected_url.value
         if not git_ok:
-            result["status"] = "not_git"
-            return Result.ok(result)
+            return Result.ok(
+                WorkspaceRemotePayload(
+                    status="not_git",
+                    remote_name=workspace.remote_name,
+                    repo_slug=workspace.repo_slug,
+                    expected_url=expected_url.unwrap_or(None),
+                )
+            )
         target = workspace.resolved_path(self.config.root)
         actual_url = self.git_client.remote_url(target, workspace.remote_name)
         if actual_url.is_err:
             return Result.err(actual_url.error)
-        if actual_url.value.is_some:
-            result["actual_url"] = actual_url.value.value
         if actual_url.value.is_none and expected_url.is_none:
-            result["status"] = "unconfigured"
+            status = "unconfigured"
         elif actual_url.value.is_none and expected_url.is_some:
-            result["status"] = "missing"
+            status = "missing"
         elif actual_url.value.is_some and expected_url.is_none:
-            result["status"] = "present"
+            status = "present"
         elif actual_url.value.is_some and expected_url.is_some and normalize_remote_url(actual_url.value.value) == normalize_remote_url(
             expected_url.value
         ):
-            result["status"] = "ok"
+            status = "ok"
         else:
-            result["status"] = "mismatch"
-        return Result.ok(result)
+            status = "mismatch"
+        return Result.ok(
+            WorkspaceRemotePayload(
+                status=status,
+                remote_name=workspace.remote_name,
+                repo_slug=workspace.repo_slug,
+                expected_url=expected_url.unwrap_or(None),
+                actual_url=actual_url.value.unwrap_or(None),
+            )
+        )
 
-    def check_workspaces(self, name: str | None = None) -> Result[dict[str, Any], AppError]:
-        """执行 workspace 健康检查。
+    def build_missing_workspace_entry(self, workspace: Workspace, target: str) -> WorkspaceCheckEntry:
+        """为缺失目录的 workspace 构造统一结果。"""
 
-        这里会组合路径存在性、git 状态、远程仓库状态和安全检查命令的执行结果。
-        """
+        return WorkspaceCheckEntry(
+            workspace=workspace.name,
+            status="missing",
+            path=target,
+            default_branch=workspace.default_branch,
+            remote_name=workspace.remote_name,
+            repo_slug=workspace.repo_slug,
+            git=WorkspaceGitPayload(status="missing_path"),
+            remote=WorkspaceRemotePayload(
+                status="missing_path",
+                remote_name=workspace.remote_name,
+                repo_slug=workspace.repo_slug,
+            ),
+            checks=[],
+        )
+
+    def run_workspace_checks(self, workspace: Workspace) -> list[WorkspaceCheckCommandPayload]:
+        """执行只读检查命令，并把子进程结果投影为结构化 payload。"""
+
+        target = workspace.resolved_path(self.config.root)
+        results: list[WorkspaceCheckCommandPayload] = []
+        for command in workspace.check_commands:
+            safe = is_safe_check_command(command)
+            if safe.is_err:
+                results.append(WorkspaceCheckCommandPayload(command=command, status="blocked", reason=safe.error.message))
+                continue
+            parsed = parse_check_command(command)
+            if parsed.is_err:
+                results.append(WorkspaceCheckCommandPayload(command=command, status="blocked", reason=parsed.error.message))
+                continue
+            completed = self.runner.run_args(parsed.value, cwd=target)
+            if completed.is_err:
+                results.append(WorkspaceCheckCommandPayload(command=command, status="failed", reason=completed.error.message))
+                continue
+            process = completed.value
+            results.append(
+                WorkspaceCheckCommandPayload(
+                    command=command,
+                    status="ok" if process.returncode == 0 else "failed",
+                    returncode=process.returncode,
+                    stdout=process.stdout.strip(),
+                    stderr=process.stderr.strip(),
+                )
+            )
+        return results
+
+    def check_workspaces(self, name: str | None = None) -> Result[WorkspaceCheckPayload, AppError]:
+        """执行 workspace 健康检查。"""
 
         loaded = self.load_workspaces()
         if loaded.is_err:
             return Result.err(loaded.error)
-        results: list[dict[str, Any]] = []
+        results: list[WorkspaceCheckEntry] = []
         for workspace in loaded.value:
             if name is not None and workspace.name != name:
                 continue
             target = workspace.resolved_path(self.config.root)
             if not target.exists():
-                results.append(
-                    {
-                        "workspace": workspace.name,
-                        "status": "missing",
-                        "path": str(target),
-                        "default_branch": workspace.default_branch,
-                        "remote_name": workspace.remote_name,
-                        "repo_slug": workspace.repo_slug,
-                        "git": {"status": "missing_path"},
-                        "remote": {
-                            "status": "missing_path",
-                            "remote_name": workspace.remote_name,
-                            "repo_slug": workspace.repo_slug,
-                        },
-                        "checks": [],
-                    }
-                )
+                results.append(self.build_missing_workspace_entry(workspace, str(target)))
                 continue
 
             git_ok = self.git_client.is_repository(target)
-            command_results = []
-            for command in workspace.check_commands:
-                safe = is_safe_check_command(command)
-                if safe.is_err:
-                    command_results.append({"command": command, "status": "blocked", "reason": safe.error.message})
-                    continue
-                parsed = parse_check_command(command)
-                if parsed.is_err:
-                    command_results.append({"command": command, "status": "blocked", "reason": parsed.error.message})
-                    continue
-                completed = self.runner.run_args(parsed.value, cwd=target)
-                if completed.is_err:
-                    command_results.append({"command": command, "status": "failed", "reason": completed.error.message})
-                    continue
-                process = completed.value
-                command_results.append(
-                    {
-                        "command": command,
-                        "status": "ok" if process.returncode == 0 else "failed",
-                        "returncode": process.returncode,
-                        "stdout": process.stdout.strip(),
-                        "stderr": process.stderr.strip(),
-                    }
-                )
-
             remote = self.resolve_remote_status(workspace, git_ok)
             if remote.is_err:
                 return Result.err(remote.error.with_context(workspace=workspace.name))
             results.append(
-                {
-                    "workspace": workspace.name,
-                    "status": "ok" if git_ok else "not_git",
-                    "path": short_path(target, self.config.root),
-                    "default_branch": workspace.default_branch,
-                    "remote_name": workspace.remote_name,
-                    "repo_slug": workspace.repo_slug,
-                    "git": {"status": "ok" if git_ok else "not_git"},
-                    "remote": remote.value,
-                    "checks": command_results,
-                }
+                WorkspaceCheckEntry(
+                    workspace=workspace.name,
+                    status="ok" if git_ok else "not_git",
+                    path=short_path(target, self.config.root),
+                    default_branch=workspace.default_branch,
+                    remote_name=workspace.remote_name,
+                    repo_slug=workspace.repo_slug,
+                    git=WorkspaceGitPayload(status="ok" if git_ok else "not_git"),
+                    remote=remote.value,
+                    checks=self.run_workspace_checks(workspace),
+                )
             )
-        return Result.ok({"workspace_count": len(results), "results": results})
+        return Result.ok(WorkspaceCheckPayload(workspace_count=len(results), results=results))
 
-    def initialize_remote(self, name: str, *, reset_existing: bool = False) -> Result[dict[str, Any], AppError]:
+    def initialize_remote(self, name: str, *, reset_existing: bool = False) -> Result[WorkspaceRemoteInitPayload, AppError]:
         """为已注册 workspace 配置远程仓库地址。"""
 
         workspace = self.get_workspace(name)
@@ -228,29 +262,59 @@ class WorkspaceService:
         actual_url = self.git_client.remote_url(target, entry.remote_name)
         if actual_url.is_err:
             return Result.err(actual_url.error.with_context(workspace=name))
-        payload = {
-            "workspace": entry.name,
-            "path": short_path(target, self.config.root),
-            "remote_name": entry.remote_name,
-            "expected_url": expected_url.value,
-        }
+        payload = WorkspaceRemoteInitPayload(
+            workspace=entry.name,
+            path=short_path(target, self.config.root),
+            remote_name=entry.remote_name,
+            expected_url=expected_url.value,
+            status="pending",
+            actual_url=actual_url.value.unwrap_or(None),
+        )
         if actual_url.value.is_none:
             added = self.git_client.add_remote(target, entry.remote_name, expected_url.value)
             if added.is_err:
                 return Result.err(added.error.with_context(workspace=name))
-            payload["status"] = "added"
-            return Result.ok(payload)
+            return Result.ok(
+                WorkspaceRemoteInitPayload(
+                    workspace=payload.workspace,
+                    path=payload.path,
+                    remote_name=payload.remote_name,
+                    expected_url=payload.expected_url,
+                    status="added",
+                )
+            )
         if normalize_remote_url(actual_url.value.value) == normalize_remote_url(expected_url.value):
-            payload["status"] = "unchanged"
-            payload["actual_url"] = actual_url.value.value
-            return Result.ok(payload)
-        payload["status"] = "conflict"
-        payload["actual_url"] = actual_url.value.value
+            return Result.ok(
+                WorkspaceRemoteInitPayload(
+                    workspace=payload.workspace,
+                    path=payload.path,
+                    remote_name=payload.remote_name,
+                    expected_url=payload.expected_url,
+                    status="unchanged",
+                    actual_url=actual_url.value.value,
+                )
+            )
         if not reset_existing:
-            return Result.ok(payload)
+            return Result.ok(
+                WorkspaceRemoteInitPayload(
+                    workspace=payload.workspace,
+                    path=payload.path,
+                    remote_name=payload.remote_name,
+                    expected_url=payload.expected_url,
+                    status="conflict",
+                    actual_url=actual_url.value.value,
+                )
+            )
         updated = self.git_client.set_remote_url(target, entry.remote_name, expected_url.value)
         if updated.is_err:
             return Result.err(updated.error.with_context(workspace=name))
-        payload["status"] = "updated"
-        payload["actual_url"] = expected_url.value
-        return Result.ok(payload)
+        return Result.ok(
+            WorkspaceRemoteInitPayload(
+                workspace=payload.workspace,
+                path=payload.path,
+                remote_name=payload.remote_name,
+                expected_url=payload.expected_url,
+                status="updated",
+                actual_url=expected_url.value,
+            )
+        )

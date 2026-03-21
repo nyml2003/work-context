@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
 
 from ..composition import RuntimeContext
 from ..core import Result
@@ -20,7 +19,7 @@ class CommandResult:
     """命令组返回给 CLI 的统一结果。"""
 
     exit_code: int
-    payload: dict[str, Any]
+    payload: object
 
 
 @dataclass(frozen=True)
@@ -28,7 +27,7 @@ class ArgumentSpec:
     """对 argparse 参数的一层声明式包装。"""
 
     flags: tuple[str, ...]
-    kwargs: dict[str, Any] = field(default_factory=dict)
+    kwargs: dict[str, object] = field(default_factory=dict)
 
     @property
     def is_option(self) -> bool:
@@ -68,10 +67,10 @@ class CommandGroup(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def run(self, args: Any, runtime: RuntimeContext) -> Result[CommandResult, AppError]:
+    def run(self, args: object, runtime: RuntimeContext) -> Result[CommandResult, AppError]:
         raise NotImplementedError
 
-    def subcommand(self, args: Any) -> str | None:
+    def subcommand(self, args: object) -> str | None:
         """沿着 `CommandSpec` 树向下解析当前命中的子命令名。"""
 
         current = self.spec
@@ -121,7 +120,7 @@ class ParserFactory:
 
     def register_spec(
         self,
-        subparsers: Any,
+        subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
         spec: CommandSpec,
         *,
         ancestor_dests: set[str],

@@ -9,6 +9,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from ..core import Result
 from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
+from ..domain.skill import SkillSyncRecord
 from ..infrastructure.skill_loader import discover_skills
 
 
@@ -36,7 +37,7 @@ def sync_skills(
     skill_name: str | None = None,
     target_root: Path | None = None,
     overwrite: bool = True,
-) -> Result[list[dict[str, str]], AppError]:
+) -> Result[list[SkillSyncRecord], AppError]:
     discovered = discover_skills(config)
     if discovered.is_err:
         return Result.err(discovered.error)
@@ -45,7 +46,7 @@ def sync_skills(
         target.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=str(target)))
-    synced: list[dict[str, str]] = []
+    synced: list[SkillSyncRecord] = []
     for skill in discovered.value:
         if skill_name is not None and skill.name != skill_name:
             continue
@@ -60,7 +61,7 @@ def sync_skills(
             shutil.copytree(skill.path, destination)
         except OSError as exc:
             return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=str(destination)))
-        synced.append({"skill": skill.name, "destination": str(destination)})
+        synced.append(SkillSyncRecord(skill=skill.name, destination=str(destination)))
     if skill_name is not None and not synced:
         return Result.err(app_error(AppErrorCode.NOT_FOUND, f"Skill not found: {skill_name}", skill=skill_name))
     return Result.ok(synced)

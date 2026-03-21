@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..core import Result
+from ..domain.context import ContextBuildResult
 from ..domain.errors import AppError
 from .base import ArgumentSpec, CommandGroup, CommandResult, CommandSpec, RuntimeContext
 
@@ -44,7 +45,7 @@ class ContextCommandGroup(CommandGroup):
         )
         if target.is_err:
             return Result.err(target.error)
-        return Result.ok(CommandResult(0, {"context": str(target.value), "format": args.format}))
+        return Result.ok(CommandResult(0, ContextBuildResult(context=str(target.value), format=args.format)))
 
 
 COMMAND_GROUP = ContextCommandGroup()

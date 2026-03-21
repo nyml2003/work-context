@@ -3,7 +3,7 @@ from __future__ import annotations
 """模板与脚手架文本辅助能力。"""
 
 import re
-from typing import Any
+from collections.abc import Mapping
 
 
 def slugify(value: str) -> str:
@@ -14,7 +14,7 @@ def slugify(value: str) -> str:
     return text.strip("-") or "item"
 
 
-def render_template(template: str, context: dict[str, Any]) -> str:
+def render_template(template: str, context: Mapping[str, object]) -> str:
     """按 Python `str.format` 规则渲染模板。"""
 
     return template.format(**context)
