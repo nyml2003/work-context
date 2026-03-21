@@ -5,35 +5,35 @@
 ## 读取文件
 
 ```powershell
-python scripts/workbench.py local read <path>
-python scripts/workbench.py local read <path> --start-line 10 --end-line 40
+python ~/.work-context/scripts/workbench.py local read <path>
+python ~/.work-context/scripts/workbench.py local read <path> --start-line 10 --end-line 40
 ```
 
 ## 列目录
 
 ```powershell
-python scripts/workbench.py local list <path>
-python scripts/workbench.py local list <path> --recursive --kind file --pattern "*.py"
+python ~/.work-context/scripts/workbench.py local list <path>
+python ~/.work-context/scripts/workbench.py local list <path> --recursive --kind file --pattern "*.py"
 ```
 
 ## 搜文本
 
 ```powershell
-python scripts/workbench.py local grep <path> --pattern "TODO"
-python scripts/workbench.py local grep <path> --pattern "build_context" --glob "*.py" --ignore-case
+python ~/.work-context/scripts/workbench.py local grep <path> --pattern "TODO"
+python ~/.work-context/scripts/workbench.py local grep <path> --pattern "build_context" --glob "*.py" --ignore-case
 ```
 
 ## 写入和追加
 
 ```powershell
-python scripts/workbench.py local write <path> --content "hello"
-python scripts/workbench.py local write <path> --content "replace" --overwrite
-python scripts/workbench.py local append <path> --content "`nworld"
+python ~/.work-context/scripts/workbench.py local write <path> --content "hello"
+python ~/.work-context/scripts/workbench.py local write <path> --content "replace" --overwrite
+python ~/.work-context/scripts/workbench.py local append <path> --content "`nworld"
 ```
 
 ## 建目录和查看状态
 
 ```powershell
-python scripts/workbench.py local mkdir <path> --parents
-python scripts/workbench.py local stat <path>
+python ~/.work-context/scripts/workbench.py local mkdir <path> --parents
+python ~/.work-context/scripts/workbench.py local stat <path>
 ```

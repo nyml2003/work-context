@@ -145,19 +145,21 @@ class SkillTestPayload:
 
 
 @dataclass(frozen=True, slots=True)
-class SkillSyncRecord:
-    """skill sync 的单项结果。"""
+class SkillLinkRecord:
+    """skill link 的单项结果。"""
 
     skill: str
+    source: str
     destination: str
+    status: str
 
 
 @dataclass(frozen=True, slots=True)
-class SkillSyncPayload:
-    """skill sync/install 的命令返回体。"""
+class SkillLinkPayload:
+    """skill link 的命令返回体。"""
 
     target: str
-    synced: list[SkillSyncRecord]
+    linked: list[SkillLinkRecord]
 
 
 def frontmatter_to_yaml(frontmatter: SkillFrontmatter) -> YamlMapping:
@@ -263,8 +265,8 @@ __all__ = [
     "SkillLintPayload",
     "SkillMetadata",
     "SkillSummary",
-    "SkillSyncPayload",
-    "SkillSyncRecord",
+    "SkillLinkPayload",
+    "SkillLinkRecord",
     "SkillTestPayload",
     "SkillTestResult",
     "agents_config_to_payload",

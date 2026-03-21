@@ -28,15 +28,14 @@
 - `skill test` 通过
 - `context build` 后，bundle 中确实出现期望的 skill 描述、UI 元数据和参考资料
 
-## 同步边界
+## 链接边界
 
-只会同步 skills/ 下面的 skill 目录。
+只会把 `skills/` 下面的 skill 目录逐个链接到 `~/.codex/skills`。
 
-不会同步这些维护工具目录：
+不会链接这些维护工具目录：
 
 - `src/`
 - `templates/`
 - `tests/`
 - `workspace-config/`
 - `reports/`
-

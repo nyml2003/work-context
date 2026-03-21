@@ -2,15 +2,15 @@ from __future__ import annotations
 
 """Packaging and installation workflows for skill directories."""
 
-import shutil
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from ..core import Result
 from ..domain.config import WorkbenchConfig
-from ..domain.errors import AppError, AppErrorCode, app_error
-from ..domain.skill import SkillSyncRecord
-from ..infrastructure.skill_loader import discover_skills
+from ..domain.errors import AppError, AppErrorCode, app_error, from_exception
+from ..domain.skill import SkillLinkRecord
+from .filesystem import ensure_dir, ensure_directory_symlink
+from .skill_loader import discover_skills
 
 
 def pack_skill(config: WorkbenchConfig, skill_name: str, *, output_path: Path | None = None) -> Result[Path, AppError]:
@@ -31,40 +31,40 @@ def pack_skill(config: WorkbenchConfig, skill_name: str, *, output_path: Path | 
     return Result.ok(target)
 
 
-def sync_skills(
+def link_skills(
     config: WorkbenchConfig,
     *,
     skill_name: str | None = None,
     target_root: Path | None = None,
-    overwrite: bool = True,
-) -> Result[list[SkillSyncRecord], AppError]:
+) -> Result[list[SkillLinkRecord], AppError]:
     discovered = discover_skills(config)
     if discovered.is_err:
         return Result.err(discovered.error)
     target = target_root or config.codex_install_root
     try:
-        target.mkdir(parents=True, exist_ok=True)
+        ensure_dir(target)
     except OSError as exc:
         return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=str(target)))
-    synced: list[SkillSyncRecord] = []
+    linked: list[SkillLinkRecord] = []
     for skill in discovered.value:
         if skill_name is not None and skill.name != skill_name:
             continue
         destination = target / skill.name
         try:
-            if destination.exists():
-                if not overwrite:
-                    return Result.err(
-                        app_error(AppErrorCode.ALREADY_EXISTS, f"Destination already exists: {destination}", path=str(destination))
-                    )
-                shutil.rmtree(destination)
-            shutil.copytree(skill.path, destination)
+            status = ensure_directory_symlink(skill.path, destination)
         except OSError as exc:
-            return Result.err(app_error(AppErrorCode.INTERNAL_ERROR, str(exc), path=str(destination)))
-        synced.append(SkillSyncRecord(skill=skill.name, destination=str(destination)))
-    if skill_name is not None and not synced:
+            return Result.err(from_exception(exc, default_code=AppErrorCode.INTERNAL_ERROR, path=str(destination), skill=skill.name))
+        linked.append(
+            SkillLinkRecord(
+                skill=skill.name,
+                source=str(skill.path.resolve()),
+                destination=str(destination),
+                status=status,
+            )
+        )
+    if skill_name is not None and not linked:
         return Result.err(app_error(AppErrorCode.NOT_FOUND, f"Skill not found: {skill_name}", skill=skill_name))
-    return Result.ok(synced)
+    return Result.ok(linked)
 
 
-__all__ = ["pack_skill", "sync_skills"]
+__all__ = ["link_skills", "pack_skill"]

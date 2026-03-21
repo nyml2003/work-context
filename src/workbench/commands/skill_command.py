@@ -5,7 +5,7 @@ from pathlib import Path
 from ..core import Result
 from ..domain.command_output import ArchivePathPayload, CreatedPathPayload
 from ..domain.errors import AppError, AppErrorCode, app_error
-from ..domain.skill import SkillSyncPayload
+from ..domain.skill import SkillLinkPayload
 from .base import ArgumentSpec, CommandGroup, CommandResult, CommandSpec, RuntimeContext
 
 
@@ -15,11 +15,6 @@ class SkillCommandGroup(CommandGroup):
 
     @property
     def spec(self) -> CommandSpec:
-        sync_arguments = (
-            ArgumentSpec(("name",), {"nargs": "?"}),
-            ArgumentSpec(("--target",), {}),
-            ArgumentSpec(("--no-overwrite",), {"action": "store_true"}),
-        )
         return CommandSpec(
             name="skill",
             help="Codex skill management commands",
@@ -44,8 +39,7 @@ class SkillCommandGroup(CommandGroup):
                     help="Package a skill directory as a zip",
                     arguments=(ArgumentSpec(("name",), {}), ArgumentSpec(("--output",), {})),
                 ),
-                CommandSpec(name="sync", help="Copy skills into a Codex skills directory", arguments=sync_arguments),
-                CommandSpec(name="install", help="Copy skills into a Codex skills directory", arguments=sync_arguments),
+                CommandSpec(name="link", help="Link skills into a Codex skills directory", arguments=(ArgumentSpec(("name",), {"nargs": "?"}),)),
             ),
         )
 
@@ -83,12 +77,11 @@ class SkillCommandGroup(CommandGroup):
             if archive.is_err:
                 return Result.err(archive.error)
             return Result.ok(CommandResult(0, ArchivePathPayload(archive=str(archive.value))))
-        if args.skill_command in {"sync", "install"}:
-            target = Path(args.target).expanduser().resolve() if args.target else None
-            synced = service.sync_skills(name=args.name, target_root=target, overwrite=not args.no_overwrite)
-            if synced.is_err:
-                return Result.err(synced.error)
-            payload = SkillSyncPayload(target=str(target or services.value.config.codex_install_root), synced=synced.value)
+        if args.skill_command == "link":
+            linked = service.link_skills(name=args.name, target_root=services.value.config.codex_install_root)
+            if linked.is_err:
+                return Result.err(linked.error)
+            payload = SkillLinkPayload(target=str(services.value.config.codex_install_root), linked=linked.value)
             return Result.ok(CommandResult(0, payload))
         return Result.err(app_error(AppErrorCode.UNSUPPORTED_COMMAND, f"Unsupported skill command: {args.skill_command}"))
 

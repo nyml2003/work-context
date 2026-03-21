@@ -9,6 +9,8 @@ from ..domain.errors import AppError, AppErrorCode, app_error
 from ..infrastructure.config_store import load_config, write_default_config
 from ..infrastructure.filesystem import ensure_dir, write_text
 
+WORKBENCH_SCRIPT_ENTRY = "python ~/.work-context/scripts/workbench.py"
+
 
 DEFAULT_TEMPLATES: dict[str, str] = {
     "templates/skill/SKILL.md.tpl": """---
@@ -122,7 +124,7 @@ SAMPLE_REFERENCE_VALIDATION = """# Validation Checklist
 
 SAMPLE_VALIDATION_SKILL_MD = """---
 name: "skill-validation"
-description: "当已经在这个仓库里创建或修改了一个 Codex skill，需要用当前 workbench CLI 做创建后自检时使用，包括结构校验、bundle 检查、测试夹具验证，以及同步前确认。"
+description: "当已经在这个仓库里创建或修改了一个 Codex skill，需要用当前 workbench CLI 做创建后自检时使用，包括结构校验、bundle 检查、测试夹具验证，以及链接前确认。"
 metadata:
   short-description: "校验新建或修改后的 Codex skill"
 ---
@@ -139,7 +141,7 @@ metadata:
 - 先围绕单个目标 skill 工作，不要在一次校验里混入多个 skill。
 - 优先使用当前仓库已有 CLI，而不是手工猜测是否合格。
 - 遇到具体命令、输出解释或验收清单时，读取 `references/workbench-validation-flow.md` 和 `references/acceptance-checklist.md`。
-- 只有当 `lint` 和 `test` 都通过后，才进入 `context build` 或 `skill sync` 阶段。
+- 只有当 `lint` 和 `test` 都通过后，才进入 `context build` 或 `skill link` 阶段。
 
 ## 工作流程
 
@@ -147,7 +149,7 @@ metadata:
 2. 按 `references/workbench-validation-flow.md` 中的顺序先跑结构检查，再解决 error 级别问题。
 3. 再按同一份 reference 跑 bundle 测试，确认测试夹具要求的内容确实出现在实际 bundle 中。
 4. 需要人工确认最终上下文时，继续按 reference 里的 bundle 预览步骤检查 `SKILL.md`、`agents/openai.yaml` 和 `references/`。
-5. 如需安装前确认，最后再按 reference 里的同步步骤验证目标目录是否正确。
+5. 如需安装前确认，最后再按 reference 里的链接步骤验证目标目录是否正确。
 
 ## 输出要求
 
@@ -157,20 +159,20 @@ metadata:
 
 SAMPLE_VALIDATION_OPENAI_YAML = """interface:
   display_name: "Skill 创建校验"
-  short_description: "校验新建或修改后的 Codex skill 结构、测试与同步准备情况"
+  short_description: "校验新建或修改后的 Codex skill 结构、测试与链接准备情况"
   default_prompt: "使用 $skill-validation 校验这个仓库里刚创建或刚修改的 Codex skill。"
 policy:
   allow_implicit_invocation: true
 """
 
-SAMPLE_VALIDATION_FLOW = """# 当前仓库的校验流程
+SAMPLE_VALIDATION_FLOW = f"""# 当前仓库的校验流程
 
 当一个 Codex skill 已经创建或基本写完后，优先按下面的顺序使用当前仓库 CLI。
 
 ## 1. 先跑结构检查
 
 ```powershell
-python scripts/workbench.py skill lint <name>
+{WORKBENCH_SCRIPT_ENTRY} skill lint <name>
 ```
 
 这个命令主要检查：
@@ -182,6 +184,61 @@ python scripts/workbench.py skill lint <name>
 - `agents/openai.yaml` 结构是否可读
 - `SKILL.md` 里提到的 `agents/`、`references/`、`scripts/`、`assets/` 路径是否真的存在
 - `examples/` 和 `tests/` 里的 JSON 是否可解析
+
+先把 error 级别的问题解决，再看 warning 是否需要人工判断。
+
+## 2. 再跑 bundle 测试
+
+```powershell
+{WORKBENCH_SCRIPT_ENTRY} skill test <name>
+```
+
+这个命令会读取 `tests/*.json`，把 skill 真正拼成 bundle，然后检查：
+
+- `bundle_contains` 里的关键内容是否真的出现在 bundle 中
+- `reference_count` 是否符合预期
+
+如果这里失败，优先检查：
+
+- `tests/*.json` 写的断言是不是过严
+- `references/` 文件是否缺失或未被 bundle 带上
+- `agents/openai.yaml` 或 `SKILL.md` 里的关键字符串是否和测试预期不一致
+
+## 3. 用 context build 做人工确认
+
+```powershell
+{WORKBENCH_SCRIPT_ENTRY} context build <name>
+{WORKBENCH_SCRIPT_ENTRY} context build <name> --format json
+```
+
+这个命令适合人工确认 bundle 的真实内容，尤其要看：
+
+- front matter 是否正确
+- `agents/openai.yaml` 是否和 skill 的用途一致
+- 该带上的 `references/` 是否真的带上了
+- 有没有把不该进上下文的内容塞进去
+
+## 4. 链接前确认
+
+如需把 skill 暴露给 Codex，先确保 scripts 稳定入口已经建好：
+
+```powershell
+{WORKBENCH_SCRIPT_ENTRY} workspace link-scripts
+```
+
+然后再把目标 skill 链接到默认位置：
+
+```powershell
+{WORKBENCH_SCRIPT_ENTRY} skill link <name>
+```
+
+默认目标目录定义在 `workbench.toml`：
+
+```toml
+[codex]
+install_root = "~/.codex/skills"
+scripts_root = "~/.work-context/scripts"
+```
 """
 
 SAMPLE_VALIDATION_CHECKLIST = """# 验收清单
@@ -195,9 +252,17 @@ SAMPLE_VALIDATION_CHECKLIST = """# 验收清单
 - 推荐有 `agents/openai.yaml`
 - 如果正文中提到了 `references/...`、`scripts/...`、`assets/...`，这些路径必须真实存在
 
-## 同步边界
+## 链接边界
 
-只会同步 skills/ 下面的 skill 目录。
+只会把 `skills/` 下面的 skill 目录逐个链接到 `~/.codex/skills`。
+
+不会链接这些维护工具目录：
+
+- `src/`
+- `templates/`
+- `tests/`
+- `workspace-config/`
+- `reports/`
 """
 
 SAMPLE_VALIDATION_EXAMPLE = """{
@@ -215,8 +280,8 @@ SAMPLE_VALIDATION_TEST = """{
   "bundle_contains": [
     "name: \\"skill-validation\\"",
     "使用 $skill-validation 校验这个仓库里刚创建或刚修改的 Codex skill。",
-    "python scripts/workbench.py skill lint <name>",
-    "只会同步 skills/ 下面的 skill 目录。"
+    "python ~/.work-context/scripts/workbench.py skill lint <name>",
+    "只会把 `skills/` 下面的 skill 目录逐个链接到 `~/.codex/skills`。"
   ],
   "reference_count": 2
 }
@@ -257,44 +322,44 @@ policy:
   allow_implicit_invocation: true
 """
 
-SAMPLE_LOCAL_CLI_QUICKSTART = """# local CLI 快速参考
+SAMPLE_LOCAL_CLI_QUICKSTART = f"""# local CLI 快速参考
 
 当你需要跨平台地做基础本地文件操作时，优先使用下面这些命令。
 
 ## 读取文件
 
 ```powershell
-python scripts/workbench.py local read <path>
-python scripts/workbench.py local read <path> --start-line 10 --end-line 40
+{WORKBENCH_SCRIPT_ENTRY} local read <path>
+{WORKBENCH_SCRIPT_ENTRY} local read <path> --start-line 10 --end-line 40
 ```
 
 ## 列目录
 
 ```powershell
-python scripts/workbench.py local list <path>
-python scripts/workbench.py local list <path> --recursive --kind file --pattern "*.py"
+{WORKBENCH_SCRIPT_ENTRY} local list <path>
+{WORKBENCH_SCRIPT_ENTRY} local list <path> --recursive --kind file --pattern "*.py"
 ```
 
 ## 搜文本
 
 ```powershell
-python scripts/workbench.py local grep <path> --pattern "TODO"
-python scripts/workbench.py local grep <path> --pattern "build_context" --glob "*.py" --ignore-case
+{WORKBENCH_SCRIPT_ENTRY} local grep <path> --pattern "TODO"
+{WORKBENCH_SCRIPT_ENTRY} local grep <path> --pattern "build_context" --glob "*.py" --ignore-case
 ```
 
 ## 写入和追加
 
 ```powershell
-python scripts/workbench.py local write <path> --content "hello"
-python scripts/workbench.py local write <path> --content "replace" --overwrite
-python scripts/workbench.py local append <path> --content "`nworld"
+{WORKBENCH_SCRIPT_ENTRY} local write <path> --content "hello"
+{WORKBENCH_SCRIPT_ENTRY} local write <path> --content "replace" --overwrite
+{WORKBENCH_SCRIPT_ENTRY} local append <path> --content "`nworld"
 ```
 
 ## 建目录和查看状态
 
 ```powershell
-python scripts/workbench.py local mkdir <path> --parents
-python scripts/workbench.py local stat <path>
+{WORKBENCH_SCRIPT_ENTRY} local mkdir <path> --parents
+{WORKBENCH_SCRIPT_ENTRY} local stat <path>
 ```
 """
 
@@ -332,7 +397,7 @@ SAMPLE_LOCAL_EXAMPLE = """{
 SAMPLE_LOCAL_TEST = """{
   "bundle_contains": [
     "name: \\"local-cli-operations\\"",
-    "python scripts/workbench.py local read <path>",
+    "python ~/.work-context/scripts/workbench.py local read <path>",
     "调用命令时的当前工作目录",
     "CLI 会先把输入路径解析成绝对路径。"
   ],

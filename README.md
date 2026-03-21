@@ -8,7 +8,8 @@
 - 校验 skill 目录结构和 `SKILL.md` 格式
 - 生成新的 skill 骨架
 - 预览一个 skill 实际会被打包成什么上下文
-- 把 skill 同步到本机 `~/.codex/skills`
+- 把 skill 链接到本机 `~/.codex/skills`
+- 把 CLI scripts 暴露到稳定路径 `~/.work-context/scripts`
 
 运行时只使用 Python 标准库。
 
@@ -112,24 +113,30 @@ python scripts/workbench.py context build codex-skill-authoring
 python scripts/workbench.py context build codex-skill-authoring --format json
 ```
 
-### 4. 安装或同步到本机 Codex skills 目录
+### 4. 把 skill 和 scripts 链接到稳定位置
 
-把仓库里的全部 skill 同步到默认位置：
+先把当前仓库的 `scripts/` 暴露到稳定入口：
 
 ```powershell
-python scripts/workbench.py skill sync
+python scripts/workbench.py workspace link-scripts
 ```
 
-只同步某一个 skill：
+这会创建默认路径 `~/.work-context/scripts`，让 skill 可以在任意目录通过稳定入口调用：
 
 ```powershell
-python scripts/workbench.py skill sync codex-skill-authoring
+python ~/.work-context/scripts/workbench.py local stat .
 ```
 
-同步到自定义目录做测试：
+然后把仓库里的全部 skill 链接到默认位置：
 
 ```powershell
-python scripts/workbench.py skill sync codex-skill-authoring --target C:\temp\codex-skills
+python scripts/workbench.py skill link
+```
+
+只链接某一个 skill：
+
+```powershell
+python scripts/workbench.py skill link codex-skill-authoring
 ```
 
 默认目标目录定义在 `workbench.toml`：
@@ -137,9 +144,14 @@ python scripts/workbench.py skill sync codex-skill-authoring --target C:\temp\co
 ```toml
 [codex]
 install_root = "~/.codex/skills"
+scripts_root = "~/.work-context/scripts"
 ```
 
-注意：同步时只会复制 `skills/` 下面的 skill 目录，不会复制 `src/`、`templates/`、`tests/`、`workspace-config/`、`reports/` 这些维护工具目录。
+注意：
+
+- `workspace link-scripts` 只会链接 `scripts/` 目录，不会把整个仓库暴露到 `~/.work-context`
+- `skill link` 只会把 `skills/` 下面的 skill 目录逐个链接到 `~/.codex/skills`
+- 不会链接 `src/`、`templates/`、`tests/`、`workspace-config/`、`reports/` 这些维护工具目录
 
 ### 5. 在当前工作目录内统一做本地文件操作
 
@@ -170,7 +182,7 @@ python scripts/workbench.py local stat src\\workbench\\cli.py
 4. 跑 `skill lint`
 5. 跑 `skill test`
 6. 用 `context build` 看一下最终 bundle
-7. 用 `skill sync` 同步到本机 Codex
+7. 首次接入本机 Codex 时，用 `workspace link-scripts` 和 `skill link` 建立稳定链接
 
 ## 所有命令
 
@@ -179,13 +191,13 @@ python scripts/workbench.py local stat src\\workbench\\cli.py
 - `skill lint`：校验 skill 结构和格式
 - `skill test`：运行 skill 的 bundle 测试
 - `skill pack`：把一个 skill 打成 zip
-- `skill sync`：把 skill 复制到 Codex skill 目录
-- `skill install`：`skill sync` 的别名
+- `skill link`：把 skill 逐个链接到 Codex skill 目录
 - `local read/list/grep/write/append/mkdir/stat`：在当前工作目录内做跨平台本地文件操作
 - `context build`：生成一个 skill 的上下文预览
 - `workspace register`：登记外部代码仓库
 - `workspace add`：`workspace register` 的兼容别名
 - `workspace check`：对登记过的仓库执行只读检查
+- `workspace link-scripts`：把当前仓库的 `scripts/` 链接到稳定路径
 - `workspace remote-init`：为已登记仓库初始化或修正远程地址
 - `report generate`：生成仓库状态报告
 

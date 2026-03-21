@@ -14,3 +14,4 @@ github_remote_prefix = "https://github.com/nyml2003"
 
 [codex]
 install_root = "~/.codex/skills"
+scripts_root = "~/.work-context/scripts"

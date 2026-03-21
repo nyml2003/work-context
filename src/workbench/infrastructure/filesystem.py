@@ -7,6 +7,12 @@ from pathlib import Path
 
 from ..core.serialization import JsonValue, to_plain_data
 
+
+def normalized_path(path: Path) -> Path:
+    """返回展开后的稳定绝对路径。"""
+
+    return path.expanduser().resolve()
+
 def ensure_dir(path: Path) -> Path:
     """确保目录存在。"""
 
@@ -46,4 +52,37 @@ def short_path(path: Path, root: Path) -> str:
         return str(path)
 
 
-__all__ = ["ensure_dir", "read_json", "short_path", "write_json", "write_text"]
+def same_symlink_target(link_path: Path, source: Path) -> bool:
+    """判断现有符号链接是否已经指向目标目录。"""
+
+    return link_path.is_symlink() and normalized_path(link_path) == normalized_path(source)
+
+
+def ensure_directory_symlink(source: Path, destination: Path) -> str:
+    """创建目录符号链接，已存在且同源时保持幂等。"""
+
+    resolved_source = normalized_path(source)
+    if not resolved_source.exists():
+        raise FileNotFoundError(f"Path does not exist: {resolved_source}")
+    if not resolved_source.is_dir():
+        raise NotADirectoryError(f"Expected a directory path: {resolved_source}")
+    destination = destination.expanduser()
+    if destination.exists() or destination.is_symlink():
+        if same_symlink_target(destination, resolved_source):
+            return "unchanged"
+        raise FileExistsError(f"Destination already exists: {destination}")
+    ensure_dir(destination.parent)
+    destination.symlink_to(resolved_source, target_is_directory=True)
+    return "linked"
+
+
+__all__ = [
+    "ensure_dir",
+    "ensure_directory_symlink",
+    "normalized_path",
+    "read_json",
+    "same_symlink_target",
+    "short_path",
+    "write_json",
+    "write_text",
+]

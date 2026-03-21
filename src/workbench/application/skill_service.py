@@ -7,9 +7,9 @@ from pathlib import Path
 from ..core import Result
 from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
-from ..domain.skill import Skill, SkillBundleReference, SkillLintPayload, SkillSyncRecord, SkillTestPayload
+from ..domain.skill import Skill, SkillBundleReference, SkillLintPayload, SkillLinkRecord, SkillTestPayload
 from ..infrastructure.skill_loader import discover_skills
-from ..infrastructure.skill_packaging import pack_skill, sync_skills
+from ..infrastructure.skill_packaging import link_skills, pack_skill
 from .skill_bundle import render_bundle, test_skills
 from .skill_creation import create_skill
 from .skill_validation import lint_skills
@@ -61,16 +61,15 @@ class SkillService:
 
         return pack_skill(self.config, name, output_path=output_path)
 
-    def sync_skills(
+    def link_skills(
         self,
         *,
         name: str | None = None,
         target_root: Path | None = None,
-        overwrite: bool = True,
-    ) -> Result[list[SkillSyncRecord], AppError]:
-        """把 skill 同步到目标目录。"""
+    ) -> Result[list[SkillLinkRecord], AppError]:
+        """把 skill 链接到目标目录。"""
 
-        return sync_skills(self.config, skill_name=name, target_root=target_root, overwrite=overwrite)
+        return link_skills(self.config, skill_name=name, target_root=target_root)
 
     def discover_skills(self) -> Result[list[Skill], AppError]:
         """发现并加载当前仓库中的全部 skill。"""

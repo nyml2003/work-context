@@ -1,7 +1,7 @@
 {
   "bundle_contains": [
     "name: \"local-cli-operations\"",
-    "python scripts/workbench.py local read <path>",
+    "python ~/.work-context/scripts/workbench.py local read <path>",
     "调用命令时的当前工作目录",
     "CLI 会先把输入路径解析成绝对路径。"
   ],

@@ -25,7 +25,7 @@ ROOT_KEYS = {"paths", "files", "workspace", "codex", "tool"}
 PATH_KEYS = {"skills", "templates", "reports", "workspace_config"}
 FILE_KEYS = {"workspace_registry"}
 WORKSPACE_KEYS = {"managed_subdir", "default_remote_name", "github_remote_prefix"}
-CODEX_KEYS = {"install_root"}
+CODEX_KEYS = {"install_root", "scripts_root"}
 TOOL_KEYS = {"name", "version"}
 
 
@@ -50,6 +50,7 @@ def build_workbench_config(root: Path, document: WorkbenchConfigDocument) -> Wor
         default_remote_name=document.workspace.default_remote_name,
         github_remote_prefix=document.workspace.github_remote_prefix,
         codex_install_root=Path(document.codex.install_root).expanduser(),
+        work_context_scripts_root=Path(document.codex.scripts_root).expanduser(),
     )
 
 
@@ -201,7 +202,15 @@ def parse_codex_section(document: Mapping[str, object], defaults: WorkbenchCodex
     )
     if install_root.is_err:
         return Result.err(install_root.error)
-    return Result.ok(WorkbenchCodexSettings(install_root=install_root.value))
+    scripts_root = read_optional_string(
+        table.value,
+        key="scripts_root",
+        default=defaults.scripts_root,
+        label="codex",
+    )
+    if scripts_root.is_err:
+        return Result.err(scripts_root.error)
+    return Result.ok(WorkbenchCodexSettings(install_root=install_root.value, scripts_root=scripts_root.value))
 
 
 def parse_tool_section(
@@ -289,6 +298,7 @@ def dump_config_document(document: WorkbenchConfigDocument) -> str:
         "",
         "[codex]",
         f"install_root = {quote_toml_string(document.codex.install_root)}",
+        f"scripts_root = {quote_toml_string(document.codex.scripts_root)}",
     ]
     if document.tool is not None:
         lines.extend(

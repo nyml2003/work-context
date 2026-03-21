@@ -37,6 +37,7 @@ class WorkbenchCodexSettings:
     """Codex 相关路径配置。"""
 
     install_root: str = "~/.codex/skills"
+    scripts_root: str = "~/.work-context/scripts"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +75,7 @@ class WorkbenchConfig:
     default_remote_name: str
     github_remote_prefix: str
     codex_install_root: Path
+    work_context_scripts_root: Path
 
 
 __all__ = [

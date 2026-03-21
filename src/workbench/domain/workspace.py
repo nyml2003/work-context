@@ -141,6 +141,15 @@ class WorkspaceRemoteInitPayload:
     actual_url: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceScriptsLinkPayload:
+    """workspace link-scripts 结果。"""
+
+    source: str
+    target: str
+    status: str
+
+
 def normalize_remote_url(url: str) -> str:
     text = url.strip()
     if text.endswith(".git"):
@@ -231,6 +240,7 @@ __all__ = [
     "WorkspaceRegistrationPayload",
     "WorkspaceRemoteInitPayload",
     "WorkspaceRemotePayload",
+    "WorkspaceScriptsLinkPayload",
     "build_remote_url",
     "is_safe_check_command",
     "normalize_remote_url",

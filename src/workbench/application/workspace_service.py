@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..core import Result
 from ..domain.config import WorkbenchConfig
-from ..domain.errors import AppError, AppErrorCode, app_error
+from ..domain.errors import AppError, AppErrorCode, app_error, from_exception
 from ..domain.workspace import (
     DEFAULT_CHECK_COMMANDS,
     Workspace,
@@ -15,6 +15,7 @@ from ..domain.workspace import (
     WorkspaceRegistrationPayload,
     WorkspaceRemoteInitPayload,
     WorkspaceRemotePayload,
+    WorkspaceScriptsLinkPayload,
     build_remote_url,
     is_safe_check_command,
     normalize_remote_url,
@@ -22,7 +23,7 @@ from ..domain.workspace import (
     resolve_workspace_target,
 )
 from ..infrastructure import CommandRunner, GitClient, WorkspaceRegistry
-from ..infrastructure.filesystem import short_path
+from ..infrastructure.filesystem import ensure_directory_symlink, short_path
 
 
 class WorkspaceService:
@@ -100,6 +101,17 @@ class WorkspaceService:
             remote_name=remote_name,
             repo_slug=repo_slug,
         )
+
+    def link_scripts(self) -> Result[WorkspaceScriptsLinkPayload, AppError]:
+        """创建稳定的 scripts 入口链接。"""
+
+        source = self.config.root / "scripts"
+        target = self.config.work_context_scripts_root
+        try:
+            status = ensure_directory_symlink(source, target)
+        except OSError as exc:
+            return Result.err(from_exception(exc, default_code=AppErrorCode.INTERNAL_ERROR, path=str(target)))
+        return Result.ok(WorkspaceScriptsLinkPayload(source=str(source.resolve()), target=str(target), status=status))
 
     def get_workspace(self, name: str) -> Result[Workspace, AppError]:
         """按名称读取单个 workspace。"""

@@ -45,6 +45,7 @@ class WorkspaceCommandGroup(CommandGroup):
                 CommandSpec(name="register", help="Register a workspace", arguments=workspace_register_arguments()),
                 CommandSpec(name="add", help="Alias for workspace register", arguments=workspace_register_arguments()),
                 CommandSpec(name="check", help="Run safe checks in registered workspaces", arguments=(ArgumentSpec(("name",), {"nargs": "?"}),)),
+                CommandSpec(name="link-scripts", help="Link scripts into the stable work-context path"),
                 CommandSpec(
                     name="remote-init",
                     help="Initialize or repair a workspace remote",
@@ -76,6 +77,11 @@ class WorkspaceCommandGroup(CommandGroup):
                 return Result.err(payload.error)
             exit_code = 1 if any(workspace_check_has_failures(entry) for entry in payload.value.results) else 0
             return Result.ok(CommandResult(exit_code, payload.value))
+        if args.workspace_command == "link-scripts":
+            payload = service.link_scripts()
+            if payload.is_err:
+                return Result.err(payload.error)
+            return Result.ok(CommandResult(0, payload.value))
         if args.workspace_command == "remote-init":
             payload = service.initialize_remote(args.name, reset_existing=args.reset_existing)
             if payload.is_err:

@@ -5,7 +5,7 @@
 ## 1. 先跑结构检查
 
 ```powershell
-python scripts/workbench.py skill lint <name>
+python ~/.work-context/scripts/workbench.py skill lint <name>
 ```
 
 这个命令主要检查：
@@ -23,7 +23,7 @@ python scripts/workbench.py skill lint <name>
 ## 2. 再跑 bundle 测试
 
 ```powershell
-python scripts/workbench.py skill test <name>
+python ~/.work-context/scripts/workbench.py skill test <name>
 ```
 
 这个命令会读取 `tests/*.json`，把 skill 真正拼成 bundle，然后检查：
@@ -40,8 +40,8 @@ python scripts/workbench.py skill test <name>
 ## 3. 用 context build 做人工确认
 
 ```powershell
-python scripts/workbench.py context build <name>
-python scripts/workbench.py context build <name> --format json
+python ~/.work-context/scripts/workbench.py context build <name>
+python ~/.work-context/scripts/workbench.py context build <name> --format json
 ```
 
 这个命令适合人工确认 bundle 的真实内容，尤其要看：
@@ -51,19 +51,24 @@ python scripts/workbench.py context build <name> --format json
 - 该带上的 `references/` 是否真的带上了
 - 有没有把不该进上下文的内容塞进去
 
-## 4. 安装前确认
+## 4. 链接前确认
 
-如果只是安装前做一次安全确认，先同步到临时目录：
-
-```powershell
-python scripts/workbench.py skill sync <name> --target C:\temp\codex-skills
-```
-
-确认目录结构正确后，再决定是否同步到默认位置：
+如需把 skill 暴露给 Codex，先确保 scripts 稳定入口已经建好：
 
 ```powershell
-python scripts/workbench.py skill sync <name>
+python ~/.work-context/scripts/workbench.py workspace link-scripts
 ```
 
-默认目标是 `workbench.toml` 里的 `~/.codex/skills`。
+然后再把目标 skill 链接到默认位置：
 
+```powershell
+python ~/.work-context/scripts/workbench.py skill link <name>
+```
+
+默认目标目录定义在 `workbench.toml`：
+
+```toml
+[codex]
+install_root = "~/.codex/skills"
+scripts_root = "~/.work-context/scripts"
+```

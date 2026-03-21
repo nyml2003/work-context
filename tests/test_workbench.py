@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -66,6 +67,16 @@ def set_github_prefix(root: Path, prefix: str) -> None:
     content = config_path.read_text(encoding="utf-8")
     updated = content.replace('github_remote_prefix = ""', f'github_remote_prefix = "{prefix}"')
     config_path.write_text(updated, encoding="utf-8")
+
+
+def set_codex_paths(root: Path, *, install_root: Path | None = None, scripts_root: Path | None = None) -> None:
+    config_path = root / "workbench.toml"
+    content = config_path.read_text(encoding="utf-8")
+    if install_root is not None:
+        content = re.sub(r'install_root = ".*"', f'install_root = "{install_root.as_posix()}"', content)
+    if scripts_root is not None:
+        content = re.sub(r'scripts_root = ".*"', f'scripts_root = "{scripts_root.as_posix()}"', content)
+    config_path.write_text(content, encoding="utf-8")
 
 
 def initialize_git_repo(path: Path) -> None:
@@ -144,20 +155,31 @@ class WorkbenchTestCase(unittest.TestCase):
     def test_context_payload_contains_validation_flow(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
         payload = expect_ok(ContextService(config).build_context_payload("skill-validation"))
-        self.assertIn("python scripts/workbench.py skill lint <name>", payload.bundle_markdown)
+        self.assertIn("python ~/.work-context/scripts/workbench.py skill lint <name>", payload.bundle_markdown)
 
     def test_context_payload_contains_local_cli_references(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
         payload = expect_ok(ContextService(config).build_context_payload("local-cli-operations"))
-        self.assertIn("python scripts/workbench.py local read <path>", payload.bundle_markdown)
+        self.assertIn("python ~/.work-context/scripts/workbench.py local read <path>", payload.bundle_markdown)
 
-    def test_sync_skills_to_custom_target(self) -> None:
+    def test_link_skill_to_custom_target(self) -> None:
         root = make_temp_dir()
         config = expect_ok(load_config(REPO_ROOT))
         target = root / "codex-skills"
-        synced = expect_ok(SkillService(config).sync_skills(name="codex-skill-authoring", target_root=target))
-        self.assertEqual(len(synced), 1)
-        self.assertTrue((target / "codex-skill-authoring" / "SKILL.md").exists())
+        linked = expect_ok(SkillService(config).link_skills(name="codex-skill-authoring", target_root=target))
+        self.assertEqual(len(linked), 1)
+        destination = target / "codex-skill-authoring"
+        self.assertTrue(destination.is_symlink())
+        self.assertEqual(destination.resolve(), (REPO_ROOT / "skills" / "codex-skill-authoring").resolve())
+        self.assertEqual(linked[0].status, "linked")
+
+    def test_link_skill_is_idempotent(self) -> None:
+        root = make_temp_dir()
+        config = expect_ok(load_config(REPO_ROOT))
+        target = root / "codex-skills"
+        expect_ok(SkillService(config).link_skills(name="codex-skill-authoring", target_root=target))
+        linked = expect_ok(SkillService(config).link_skills(name="codex-skill-authoring", target_root=target))
+        self.assertEqual(linked[0].status, "unchanged")
 
     def test_cli_generates_context_json(self) -> None:
         root = make_temp_dir()
@@ -294,6 +316,39 @@ class WorkbenchTestCase(unittest.TestCase):
             check=True,
         )
         self.assertEqual(remote.stdout.strip(), "https://github.com/example-user/demo.git")
+
+    def test_workspace_link_scripts_uses_configured_target(self) -> None:
+        root = make_temp_dir()
+        expect_ok(initialize_repo(root, include_samples=True))
+        (root / "scripts").mkdir()
+        (root / "scripts" / "workbench.py").write_text("print('stub')\n", encoding="utf-8")
+        target = root / "linked-work-context" / "scripts"
+        set_codex_paths(root, scripts_root=target)
+        code, payload = run_cli_json(root, ["workspace", "link-scripts"])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(value["status"], "linked")
+        self.assertTrue(target.is_symlink())
+        self.assertEqual(target.resolve(), (root / "scripts").resolve())
+
+        code, payload = run_cli_json(root, ["workspace", "link-scripts"])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(value["status"], "unchanged")
+
+    def test_skill_link_command_uses_configured_target(self) -> None:
+        root = make_temp_dir()
+        expect_ok(initialize_repo(root, include_samples=True))
+        target = root / "linked-codex-skills"
+        set_codex_paths(root, install_root=target)
+        code, payload = run_cli_json(root, ["skill", "link", "codex-skill-authoring"])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(value["target"], str(target))
+        self.assertEqual(value["linked"][0]["status"], "linked")
+        destination = target / "codex-skill-authoring"
+        self.assertTrue(destination.is_symlink())
+        self.assertEqual(destination.resolve(), (root / "skills" / "codex-skill-authoring").resolve())
 
     def test_cli_uses_command_group_loader(self) -> None:
         source = (SRC_DIR / "workbench" / "cli.py").read_text(encoding="utf-8")
