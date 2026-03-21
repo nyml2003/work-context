@@ -1,0 +1,14 @@
+{
+  "bundle_contains": [
+    "name: \"frontend-engineer\"",
+    "使用 $frontend-engineer",
+    "React LTS",
+    "TypeScript LTS",
+    "CSS 原子类",
+    "Vite + Rolldown",
+    "纯逻辑 TS 工具库",
+    "Node 项目",
+    "全生命周期"
+  ],
+  "reference_count": 8
+}

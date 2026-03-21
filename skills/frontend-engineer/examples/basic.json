@@ -1,0 +1,3 @@
+{
+  "request": "使用 $frontend-engineer 从零规划一个 React Web 项目，要求 React LTS + TypeScript LTS + TSX，先定义全生命周期实施方案，再建立手写 CSS 原子类、design tokens 和自维护 UI 库，同时保留把共享逻辑抽成纯逻辑 TS 工具库、把开发脚本和服务侧能力落到 Node 项目的空间。"
+}

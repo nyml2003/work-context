@@ -1,0 +1,6 @@
+interface:
+  display_name: "Frontend Engineer"
+  short_description: "按全生命周期规范交付 React/TypeScript 前端工程"
+  default_prompt: "使用 $frontend-engineer 以资深前端工程师标准推进当前任务，按项目全生命周期处理 React LTS、TypeScript LTS、CSS 原子类、自维护 UI 库，以及 Web 应用、纯逻辑 TS 工具库和 Node 项目。"
+policy:
+  allow_implicit_invocation: true
