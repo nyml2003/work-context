@@ -6,8 +6,8 @@ import shutil
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
 from ..infrastructure.skill_loader import discover_skills
 

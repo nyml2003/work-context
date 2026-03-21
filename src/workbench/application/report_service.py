@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError
 from ..infrastructure.report_output import timestamp_slug, write_markdown_report
 from .skill_service import SkillService

@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..core.yaml import loads as yaml_loads
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
 from ..domain.skill import Skill
-from ..yamlish import loads as yaml_loads
 
 
 def split_frontmatter(content: str, path: Path) -> Result[tuple[dict[str, Any], str], AppError]:

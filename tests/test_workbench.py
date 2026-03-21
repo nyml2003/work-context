@@ -17,13 +17,12 @@ if str(SRC_DIR) not in sys.path:
 TMP_ROOT = REPO_ROOT / ".tmp-tests"
 TMP_ROOT.mkdir(exist_ok=True)
 
-from workbench.application import ContextService, SkillService, WorkspaceService
-from workbench.bootstrap import initialize_repo
+from workbench.application import ContextService, SkillService, WorkspaceService, initialize_repo
 from workbench.cli import main
 from workbench.commands.base import ArgumentSpec, CommandGroup, CommandResult, CommandSpec, ParserFactory, RuntimeContext
-from workbench.config import load_config
 from workbench.core import Option, Result
 from workbench.domain.errors import AppErrorCode
+from workbench.infrastructure.config_store import load_config
 
 
 def make_temp_dir() -> Path:
@@ -319,13 +318,18 @@ class WorkbenchTestCase(unittest.TestCase):
             },
         )
 
-    def test_root_compatibility_wrappers_removed(self) -> None:
+    def test_root_legacy_modules_removed(self) -> None:
         removed = {
+            "bootstrap.py",
+            "config.py",
             "context.py",
+            "fs.py",
             "localops.py",
             "report.py",
             "skilllib.py",
+            "simple_toml.py",
             "workspace.py",
+            "yamlish.py",
         }
         existing = {path.name for path in (SRC_DIR / "workbench").glob("*.py")}
         self.assertTrue(removed.isdisjoint(existing))

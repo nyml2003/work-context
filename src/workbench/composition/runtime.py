@@ -9,9 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..application import ContextService, LocalService, ReportService, SkillService, WorkspaceService
-from ..config import WorkbenchConfig, ensure_base_layout, load_config
 from ..core import Result
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError
+from ..infrastructure.config_store import ensure_base_layout, load_config
 
 
 @dataclass

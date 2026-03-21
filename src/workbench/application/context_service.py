@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError
-from ..fs import write_json
+from ..infrastructure.filesystem import write_json
 from .skill_service import SkillService
 from .workspace_service import WorkspaceService
 

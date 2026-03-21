@@ -2,8 +2,8 @@ from __future__ import annotations
 
 """Template loading for skill scaffolding."""
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
 
 TEMPLATE_PATHS = {

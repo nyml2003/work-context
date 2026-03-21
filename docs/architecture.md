@@ -7,7 +7,7 @@
 - 新维护者应该先看哪里
 - CLI 到业务逻辑的调用链怎么走
 - 模块分层边界是什么
-- 接下来还应该往哪里继续收口
+- 当前技术债具体还剩哪些
 
 ## 1. 一眼看懂
 
@@ -22,11 +22,11 @@
 - `application/`
   - 用例编排
 - `domain/`
-  - 领域对象、规则、错误语义
+  - 领域对象、配置模型、错误语义
 - `infrastructure/`
-  - 文件、git、子进程、注册表等外部交互
+  - 文件、git、子进程、配置存储、注册表等外部交互
 - `core/`
-  - `Result` / `Option`
+  - `Result` / `Option` 与轻量格式协议实现
 
 ```mermaid
 flowchart TD
@@ -43,6 +43,7 @@ flowchart TD
     Commands --> Application
     Commands --> Core
     Composition --> Application
+    Composition --> Infrastructure
     Composition --> Core
     Application --> Domain
     Application --> Infrastructure
@@ -55,27 +56,34 @@ flowchart TD
 主规则很简单：
 
 - 外层依赖内层
-- 业务规则不反向依赖 CLI
-- IO 细节不直接泄漏到命令层
+- CLI 不承载业务规则
+- 配置、文件、格式解析各自有明确落点
 - 公开边界统一走 `Result` / `Option`
 
 ## 2. 分层职责
 
 ### `core/`
 
-这里只放跨全项目的基础协议：
+这里只放跨全项目的基础协议和轻量格式能力：
 
-- `Result[T, E]`
-- `Option[T]`
+- `result.py`
+  - `Result[T, E]`
+  - `Option[T]`
+- `toml.py`
+  - 受限 TOML 解析 / 序列化
+- `yaml.py`
+  - 受限 YAML 解析 / 序列化
 
 这层不应该知道 skill、workspace、CLI 这些业务概念。
 
 ### `domain/`
 
-这里放业务语义本身，而不是参数解析或 IO 细节。
+这里放业务语义本身，而不是参数解析或 IO 编排。
 
 当前主要有：
 
+- `config.py`
+  - `WorkbenchConfig`
 - `errors.py`
   - `AppErrorCode`
   - `AppError`
@@ -86,19 +94,20 @@ flowchart TD
 - `skill.py`
   - `Skill`
   - skill 共享常量
-- `skill_rules.py`
-  - skill lint 规则
 
 这层的约束：
 
 - 不依赖 `argparse`
 - 不直接起子进程
-- 不直接操作持久化文件
+- 不负责文件格式读写
 
 ### `infrastructure/`
 
 这里负责与外部世界交互：
 
+- `config_store.py`
+- `filesystem.py`
+- `template_rendering.py`
 - `git_client.py`
 - `process_runner.py`
 - `workspace_registry.py`
@@ -114,15 +123,16 @@ flowchart TD
 
 这里是用例层，负责把 domain 规则和 infrastructure 适配器拼起来。
 
-当前主要 service：
+当前主要入口：
 
+- `bootstrap_service.py`
 - `SkillService`
 - `WorkspaceService`
 - `ContextService`
 - `LocalService`
 - `ReportService`
 
-skill 相关 use case 已经拆成纯函数模块：
+skill 相关 use case 目前主要分成：
 
 - `skill_creation.py`
 - `skill_validation.py`
@@ -203,7 +213,46 @@ sequenceDiagram
 - parser 冲突在构建阶段提前失败
 - 业务错误和参数错误都能走统一错误协议回传
 
-## 4. 命令是怎么接入的
+## 4. 配置与初始化链路
+
+这次重构后，配置和初始化已经从根级模块收口到了明确边界。
+
+```mermaid
+flowchart LR
+    Init["application/bootstrap_service.py"]
+    ConfigStore["infrastructure/config_store.py"]
+    ConfigDomain["domain/config.py"]
+    Fs["infrastructure/filesystem.py"]
+    CoreToml["core/toml.py"]
+
+    Init --> ConfigStore
+    Init --> Fs
+    ConfigStore --> ConfigDomain
+    ConfigStore --> CoreToml
+    ConfigStore --> Fs
+```
+
+职责分布如下：
+
+- `domain/config.py`
+  - 运行时配置对象
+- `infrastructure/config_store.py`
+  - 默认配置
+  - `workbench.toml` 读写
+  - 基础目录布局创建
+- `application/bootstrap_service.py`
+  - 仓库初始化用例
+  - 模板与 sample skill 的落盘编排
+
+这意味着根级已经不再保留：
+
+- `bootstrap.py`
+- `config.py`
+- `fs.py`
+- `simple_toml.py`
+- `yamlish.py`
+
+## 5. 命令是怎么接入的
 
 [commands/__init__.py](/C:/Users/nyml/code/work-context/src/workbench/commands/__init__.py) 负责装载命令组。
 
@@ -215,7 +264,7 @@ sequenceDiagram
 - 收集模块导出的 `COMMAND_GROUP`
 - 按 `(order, name)` 排序
 
-也就是说，新增一级命令的标准做法是：
+新增一级命令的标准做法是：
 
 1. 新建一个 `*_command.py`
 2. 暴露 `COMMAND_GROUP`
@@ -235,65 +284,7 @@ flowchart LR
     Group --> Parser
 ```
 
-## 5. `commands/base.py` 负责什么
-
-[commands/base.py](/C:/Users/nyml/code/work-context/src/workbench/commands/base.py) 当前只负责 CLI 协议：
-
-- 命令声明模型
-- 参数声明模型
-- parser 构建
-- 冲突校验
-
-`ParserFactory` 会在 parser 构建阶段校验：
-
-- 一级命令重名
-- 子命令重名
-- option flag 冲突
-- positional 参数冲突
-- `dest` 冲突
-- 缺失 `subcommand_dest`
-
-这一步很重要，因为它把很多原本只能在运行时才撞出来的问题前置到了启动期。
-
-## 6. RuntimeContext 与 ServiceContainer
-
-运行时装配集中在 [runtime.py](/C:/Users/nyml/code/work-context/src/workbench/composition/runtime.py)。
-
-```mermaid
-flowchart LR
-    Runtime["RuntimeContext"]
-    Config["WorkbenchConfig"]
-    Container["ServiceContainer"]
-    Skill["SkillService"]
-    Workspace["WorkspaceService"]
-    Context["ContextService"]
-    Report["ReportService"]
-    Local["LocalService"]
-
-    Runtime --> Config
-    Runtime --> Container
-    Runtime --> Local
-    Container --> Skill
-    Container --> Workspace
-    Container --> Context
-    Container --> Report
-```
-
-`ServiceContainer` 当前收纳：
-
-- `config`
-- `skill`
-- `workspace`
-- `context`
-- `report`
-
-`LocalService` 单独缓存，不放进 `ServiceContainer`，原因是：
-
-- 它只依赖 repo root
-- 不需要完整 config 装配
-- 可以让 `local` 命令在没有 `workbench.toml` 的目录下也工作
-
-## 7. 主要业务链路
+## 6. 主要业务链路
 
 ### Skill 链路
 
@@ -307,7 +298,8 @@ flowchart LR
     Packaging["infrastructure/skill_packaging.py"]
     Templates["infrastructure/skill_templates.py"]
     SkillDomain["domain/skill.py"]
-    Rules["domain/skill_rules.py"]
+    ConfigDomain["domain/config.py"]
+    CoreYaml["core/yaml.py"]
 
     SkillService --> Creation
     SkillService --> Validation
@@ -316,11 +308,15 @@ flowchart LR
     SkillService --> Packaging
     Creation --> Templates
     Creation --> SkillDomain
+    Creation --> ConfigDomain
+    Creation --> CoreYaml
     Validation --> Loader
-    Validation --> Rules
     Validation --> SkillDomain
+    Validation --> ConfigDomain
     Bundle --> Loader
     Bundle --> SkillDomain
+    Bundle --> ConfigDomain
+    Loader --> CoreYaml
 ```
 
 职责分布如下：
@@ -331,7 +327,9 @@ flowchart LR
 - `skill_creation.py`
   - 创建 skill 脚手架
 - `skill_validation.py`
-  - lint
+  - lint 编排
+  - lint 规则收集
+  - skill 结果投影
 - `skill_bundle.py`
   - bundle 渲染
   - fixture 执行
@@ -394,39 +392,25 @@ flowchart LR
 - 再读 workspace 列表
 - 最后调用 [report_output.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/report_output.py) 写 Markdown report
 
-## 8. 根级模块的现状
+## 7. 根级模块的现状
 
-当前根目录已经不再保留兼容 façade。
+当前根目录只保留真正的包入口：
 
-也就是说，下面这些旧入口已经删除：
-
-- `skilllib.py`
-- `context.py`
-- `workspace.py`
-- `localops.py`
-- `report.py`
-
-现在如果要引用实现，应直接从分层目录进入：
-
-- skill 走 `application/`、`domain/`、`infrastructure/`
-- workspace 走 `application/` 或 `domain/`
-- local/report 直接走对应的 `application/` / `infrastructure/`
-
-根级当前保留的主要模块是：
-
+- [__init__.py](/C:/Users/nyml/code/work-context/src/workbench/__init__.py)
+- [__main__.py](/C:/Users/nyml/code/work-context/src/workbench/__main__.py)
 - [cli.py](/C:/Users/nyml/code/work-context/src/workbench/cli.py)
-- [bootstrap.py](/C:/Users/nyml/code/work-context/src/workbench/bootstrap.py)
-- [config.py](/C:/Users/nyml/code/work-context/src/workbench/config.py)
-- [fs.py](/C:/Users/nyml/code/work-context/src/workbench/fs.py)
-- [simple_toml.py](/C:/Users/nyml/code/work-context/src/workbench/simple_toml.py)
-- [yamlish.py](/C:/Users/nyml/code/work-context/src/workbench/yamlish.py)
 
-这些文件大致分成两类：
+过去的兼容 façade 和根级基础模块都已经删除。
 
-- 入口与装配胶水
-- 还未完全下沉的基础支撑代码
+这意味着现在如果要引用实现，应直接从分层目录进入：
 
-## 9. 统一返回协议
+- 配置模型走 `domain/config.py`
+- 配置存储走 `infrastructure/config_store.py`
+- 仓库初始化走 `application/bootstrap_service.py`
+- 文件系统辅助走 `infrastructure/filesystem.py`
+- 格式协议走 `core/toml.py` / `core/yaml.py`
+
+## 8. 统一返回协议
 
 项目公开边界统一走 `Result` / `Option`：
 
@@ -446,7 +430,7 @@ CLI 输出协议固定为：
 
 这样命令层、业务流程和基础设施失败都能用同一套结构回传。
 
-## 10. 当前技术债
+## 9. 当前技术债
 
 下面这些是现在仍然真实存在的技术债。
 
@@ -454,13 +438,15 @@ CLI 输出协议固定为：
 
 虽然已经迁到 infrastructure，但 boundary 校验、读写、grep、list、stat 仍集中在一个模块里。
 
-### 根级基础模块仍有继续收口空间
+### `skill_validation.py` 现在承担的职责偏多
 
-`config.py`、`bootstrap.py`、`fs.py`、`simple_toml.py`、`yamlish.py` 里仍有部分代码可以继续按职责下沉：
+为了把 lint 规则从 domain 清出去，`skill_validation.py` 目前同时承担：
 
-- 更偏业务规则的逻辑可下沉到 `domain/`
-- 更偏用例编排的逻辑可下沉到 `application/`
-- 更偏文件格式 / IO 的逻辑可下沉到 `infrastructure/`
+- lint 编排
+- issue 规则收集
+- skill 结果投影
+
+这比原来的层次更正确，但后续仍值得继续拆成更清晰的纯函数模块。
 
 ### 某些 service 仍偏 façade
 
@@ -471,12 +457,12 @@ CLI 输出协议固定为：
 - 哪些 façade 值得保留
 - 哪些能力应该继续细化成显式 use case 函数
 
-## 11. 建议下一步
+## 10. 建议下一步
 
 按当前结构，下一阶段最合理的顺序是：
 
 1. 继续拆 `local_files.py`
-2. 把根级剩余功能模块继续内聚到 `domain/application/infrastructure`
+2. 把 `skill_validation.py` 的规则收集与结果投影拆成更清晰的纯函数模块
 3. 视收益再决定是否进一步细分 façade service 与 use case 函数边界
 
 当前不建议做的事：
@@ -485,16 +471,17 @@ CLI 输出协议固定为：
 - 为了“纯函数化”而引入过度抽象
 - 在没有明确收益时把模块拆得过碎
 
-## 12. 阅读顺序
+## 11. 阅读顺序
 
 第一次接手这个仓库，建议这样看：
 
 1. [cli.py](/C:/Users/nyml/code/work-context/src/workbench/cli.py)
 2. [runtime.py](/C:/Users/nyml/code/work-context/src/workbench/composition/runtime.py)
 3. [base.py](/C:/Users/nyml/code/work-context/src/workbench/commands/base.py)
-4. [__init__.py](/C:/Users/nyml/code/work-context/src/workbench/commands/__init__.py)
-5. [workspace_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/workspace_service.py)
-6. [skill_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/skill_service.py)
-7. [workspace.py](/C:/Users/nyml/code/work-context/src/workbench/domain/workspace.py)
-8. [skill.py](/C:/Users/nyml/code/work-context/src/workbench/domain/skill.py)
-9. [result.py](/C:/Users/nyml/code/work-context/src/workbench/core/result.py)
+4. [config_store.py](/C:/Users/nyml/code/work-context/src/workbench/infrastructure/config_store.py)
+5. [bootstrap_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/bootstrap_service.py)
+6. [workspace_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/workspace_service.py)
+7. [skill_service.py](/C:/Users/nyml/code/work-context/src/workbench/application/skill_service.py)
+8. [workspace.py](/C:/Users/nyml/code/work-context/src/workbench/domain/workspace.py)
+9. [skill.py](/C:/Users/nyml/code/work-context/src/workbench/domain/skill.py)
+10. [result.py](/C:/Users/nyml/code/work-context/src/workbench/core/result.py)

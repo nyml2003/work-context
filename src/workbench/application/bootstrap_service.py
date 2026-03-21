@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+"""仓库初始化用例。"""
+
 from pathlib import Path
 
-from .core import Result
-from .domain.errors import AppError, AppErrorCode, app_error
-from .config import load_config, write_default_config
-from .fs import ensure_dir, write_text
+from ..core import Result
+from ..domain.errors import AppError, AppErrorCode, app_error
+from ..infrastructure.config_store import load_config, write_default_config
+from ..infrastructure.filesystem import ensure_dir, write_text
 
 
 DEFAULT_TEMPLATES: dict[str, str] = {
@@ -68,7 +70,6 @@ if __name__ == "__main__":
 """,
 }
 
-
 SAMPLE_SKILL_MD = """---
 name: "codex-skill-authoring"
 description: "当需要创建或维护 Codex skill 时使用，包括编写 SKILL.md front matter、维护 agents/openai.yaml 元数据，以及整理 references 或 scripts。"
@@ -91,7 +92,6 @@ metadata:
 5. 如果 skill 已经写完，接下来要用当前仓库 CLI 做创建后自检，改用 `$skill-validation`。
 """
 
-
 SAMPLE_OPENAI_YAML = """interface:
   display_name: "Codex Skill Authoring"
   short_description: "Maintain Codex skills"
@@ -99,7 +99,6 @@ SAMPLE_OPENAI_YAML = """interface:
 policy:
   allow_implicit_invocation: true
 """
-
 
 SAMPLE_REFERENCE_AUTHORING = """# Skill Structure
 
@@ -113,7 +112,6 @@ Optional directories:
 - `assets/` for files used in outputs
 """
 
-
 SAMPLE_REFERENCE_VALIDATION = """# Validation Checklist
 
 - `SKILL.md` starts with valid YAML front matter.
@@ -121,7 +119,6 @@ SAMPLE_REFERENCE_VALIDATION = """# Validation Checklist
 - `description` clearly states what the skill does and when to use it.
 - `agents/openai.yaml` uses quoted strings and its `default_prompt` mentions `$skill-name`.
 """
-
 
 SAMPLE_VALIDATION_SKILL_MD = """---
 name: "skill-validation"
@@ -158,7 +155,6 @@ metadata:
 - 需要具体判断规则时，优先引用 reference 中已经整理好的当前 CLI 说明，而不是重复发明新的校验标准。
 """
 
-
 SAMPLE_VALIDATION_OPENAI_YAML = """interface:
   display_name: "Skill 创建校验"
   short_description: "校验新建或修改后的 Codex skill 结构、测试与同步准备情况"
@@ -166,7 +162,6 @@ SAMPLE_VALIDATION_OPENAI_YAML = """interface:
 policy:
   allow_implicit_invocation: true
 """
-
 
 SAMPLE_VALIDATION_FLOW = """# 当前仓库的校验流程
 
@@ -189,7 +184,6 @@ python scripts/workbench.py skill lint <name>
 - `examples/` 和 `tests/` 里的 JSON 是否可解析
 """
 
-
 SAMPLE_VALIDATION_CHECKLIST = """# 验收清单
 
 在当前仓库里，一个新建或修改后的 skill 至少应满足下面这些条件。
@@ -206,7 +200,6 @@ SAMPLE_VALIDATION_CHECKLIST = """# 验收清单
 只会同步 skills/ 下面的 skill 目录。
 """
 
-
 SAMPLE_VALIDATION_EXAMPLE = """{
   "request": "我刚创建了一个新的 Codex skill，帮我用当前仓库的 CLI 做创建后自检。",
   "target_skill": "release-note-helper",
@@ -218,7 +211,6 @@ SAMPLE_VALIDATION_EXAMPLE = """{
 }
 """
 
-
 SAMPLE_VALIDATION_TEST = """{
   "bundle_contains": [
     "name: \\"skill-validation\\"",
@@ -229,7 +221,6 @@ SAMPLE_VALIDATION_TEST = """{
   "reference_count": 2
 }
 """
-
 
 SAMPLE_LOCAL_SKILL_MD = """---
 name: "local-cli-operations"
@@ -258,7 +249,6 @@ metadata:
 4. 如果遇到越界错误，不要绕过 CLI，先调整工作目录或把目标路径改成边界内路径。
 """
 
-
 SAMPLE_LOCAL_OPENAI_YAML = """interface:
   display_name: "Local CLI Operations"
   short_description: "Use workbench local CLI for file operations inside the current cwd"
@@ -266,7 +256,6 @@ SAMPLE_LOCAL_OPENAI_YAML = """interface:
 policy:
   allow_implicit_invocation: true
 """
-
 
 SAMPLE_LOCAL_CLI_QUICKSTART = """# local CLI 快速参考
 
@@ -309,7 +298,6 @@ python scripts/workbench.py local stat <path>
 ```
 """
 
-
 SAMPLE_LOCAL_PATH_BOUNDARY = """# 路径边界说明
 
 `local` 命令不会把路径访问范围绑死在仓库根，而是绑在“调用命令时的当前工作目录”。
@@ -331,7 +319,6 @@ SAMPLE_LOCAL_PATH_BOUNDARY = """# 路径边界说明
 - `C:\\repo\\other\\README.md` 会被拒绝
 """
 
-
 SAMPLE_LOCAL_EXAMPLE = """{
   "request": "在当前终端目录里读取 docs/plan.md 的前 40 行，搜索 TODO，并把结果追加到 reports/notes.txt。",
   "preferred_commands": [
@@ -341,7 +328,6 @@ SAMPLE_LOCAL_EXAMPLE = """{
   ]
 }
 """
-
 
 SAMPLE_LOCAL_TEST = """{
   "bundle_contains": [
@@ -353,7 +339,6 @@ SAMPLE_LOCAL_TEST = """{
   "reference_count": 2
 }
 """
-
 
 SAMPLE_SCRIPT = """#!/usr/bin/env python3
 \"\"\"Validate a generated skill name.\"\"\"
@@ -379,7 +364,6 @@ if __name__ == "__main__":
     raise SystemExit(main())
 """
 
-
 SAMPLE_EXAMPLE_JSON = """{
   "request": "Create a new Codex skill for changelog maintenance.",
   "constraints": [
@@ -388,7 +372,6 @@ SAMPLE_EXAMPLE_JSON = """{
   ]
 }
 """
-
 
 SAMPLE_TEST_JSON = """{
   "bundle_contains": [
@@ -400,12 +383,13 @@ SAMPLE_TEST_JSON = """{
 }
 """
 
-
 SAMPLE_WORKSPACES = """[workspaces]
 """
 
 
 def initialize_repo(root: Path, *, include_samples: bool = False, overwrite: bool = False) -> Result[list[Path], AppError]:
+    """初始化一个新的 workbench 仓库布局。"""
+
     created: list[Path] = []
     try:
         ensure_dir(root)
@@ -420,6 +404,8 @@ def initialize_repo(root: Path, *, include_samples: bool = False, overwrite: boo
     if config_result.is_err:
         return Result.err(config_result.error)
     config = config_result.value
+
+    # 先把最小工作区骨架建出来，再按需写模板和 sample skill。
     for path in [
         config.skills_dir,
         config.templates_dir / "skill",
@@ -466,3 +452,6 @@ def initialize_repo(root: Path, *, include_samples: bool = False, overwrite: boo
             if write_text(target, content, overwrite=overwrite):
                 created.append(target)
     return Result.ok(created)
+
+
+__all__ = ["DEFAULT_TEMPLATES", "initialize_repo"]

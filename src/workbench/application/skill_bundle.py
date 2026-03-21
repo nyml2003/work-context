@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..core.yaml import dumps as yaml_dumps
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
 from ..domain.skill import Skill
-from ..fs import read_json, short_path
+from ..infrastructure.filesystem import read_json, short_path
 from ..infrastructure.skill_loader import discover_skills
-from ..yamlish import dumps as yaml_dumps
 
 
 def render_bundle(skill: Skill, config: WorkbenchConfig) -> Result[tuple[str, list[dict[str, str]]], AppError]:

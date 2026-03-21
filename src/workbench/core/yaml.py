@@ -1,19 +1,26 @@
 from __future__ import annotations
 
+"""轻量 YAML 解析与序列化。
+
+这层只处理当前仓库需要的受限 YAML 子集，不承担通用 YAML 兼容承诺。
+"""
+
 import ast
 import json
 import re
 from typing import Any
 
-from .core import Result
-from .domain.errors import AppError, AppErrorCode, app_error
+from .result import Result
+from ..domain.errors import AppError, AppErrorCode, app_error
 
 
 class YamlError(ValueError):
-    pass
+    """内部 YAML 解析错误。"""
 
 
-def _clean_lines(content: str) -> list[str]:
+def clean_lines(content: str) -> list[str]:
+    """清理空行和注释，并阻止 tab 缩进。"""
+
     lines: list[str] = []
     for raw_line in content.splitlines():
         line = raw_line.rstrip()
@@ -27,11 +34,15 @@ def _clean_lines(content: str) -> list[str]:
     return lines
 
 
-def _indent_of(line: str) -> int:
+def indent_of(line: str) -> int:
+    """返回当前行的空格缩进。"""
+
     return len(line) - len(line.lstrip(" "))
 
 
-def _parse_scalar(text: str) -> Any:
+def parse_yaml_scalar(text: str) -> Any:
+    """解析 YAML 标量。"""
+
     value = text.strip()
     if value in {"true", "false"}:
         return value == "true"
@@ -52,22 +63,26 @@ def _parse_scalar(text: str) -> Any:
     return value
 
 
-def _parse_block(lines: list[str], index: int, indent: int) -> tuple[Any, int]:
+def parse_block(lines: list[str], index: int, indent: int) -> tuple[Any, int]:
+    """根据当前缩进决定进入 mapping 还是 sequence。"""
+
     if index >= len(lines):
         return {}, index
     current = lines[index]
-    if _indent_of(current) < indent:
+    if indent_of(current) < indent:
         return {}, index
     if current[indent:].startswith("- "):
-        return _parse_sequence(lines, index, indent)
-    return _parse_mapping(lines, index, indent)
+        return parse_sequence(lines, index, indent)
+    return parse_mapping(lines, index, indent)
 
 
-def _parse_mapping(lines: list[str], index: int, indent: int) -> tuple[dict[str, Any], int]:
+def parse_mapping(lines: list[str], index: int, indent: int) -> tuple[dict[str, Any], int]:
+    """解析 YAML mapping。"""
+
     mapping: dict[str, Any] = {}
     while index < len(lines):
         line = lines[index]
-        current_indent = _indent_of(line)
+        current_indent = indent_of(line)
         if current_indent < indent:
             break
         if current_indent != indent:
@@ -82,23 +97,25 @@ def _parse_mapping(lines: list[str], index: int, indent: int) -> tuple[dict[str,
         remainder = remainder.lstrip()
         index += 1
         if remainder:
-            mapping[key] = _parse_scalar(remainder)
+            mapping[key] = parse_yaml_scalar(remainder)
             continue
-        if index < len(lines) and _indent_of(lines[index]) > indent:
-            child_indent = _indent_of(lines[index])
+        if index < len(lines) and indent_of(lines[index]) > indent:
+            child_indent = indent_of(lines[index])
             if child_indent != indent + 2:
                 raise YamlError(f"Expected 2-space indentation under '{key}'")
-            mapping[key], index = _parse_block(lines, index, indent + 2)
+            mapping[key], index = parse_block(lines, index, indent + 2)
             continue
         mapping[key] = {}
     return mapping, index
 
 
-def _parse_sequence(lines: list[str], index: int, indent: int) -> tuple[list[Any], int]:
+def parse_sequence(lines: list[str], index: int, indent: int) -> tuple[list[Any], int]:
+    """解析 YAML sequence。"""
+
     items: list[Any] = []
     while index < len(lines):
         line = lines[index]
-        current_indent = _indent_of(line)
+        current_indent = indent_of(line)
         if current_indent < indent:
             break
         if current_indent != indent:
@@ -109,36 +126,38 @@ def _parse_sequence(lines: list[str], index: int, indent: int) -> tuple[list[Any
         remainder = stripped[2:].strip()
         index += 1
         if not remainder:
-            if index < len(lines) and _indent_of(lines[index]) > indent:
-                child_indent = _indent_of(lines[index])
+            if index < len(lines) and indent_of(lines[index]) > indent:
+                child_indent = indent_of(lines[index])
                 if child_indent != indent + 2:
                     raise YamlError("Sequence children must use 2-space indentation")
-                value, index = _parse_block(lines, index, indent + 2)
+                value, index = parse_block(lines, index, indent + 2)
                 items.append(value)
             else:
                 items.append(None)
             continue
         if re.match(r"^[A-Za-z0-9_-]+:\s*.*$", remainder) and not remainder.startswith(("'", '"')):
             key, _, value_text = remainder.partition(":")
-            item: dict[str, Any] = {key.strip(): _parse_scalar(value_text.strip()) if value_text.strip() else {}}
-            if index < len(lines) and _indent_of(lines[index]) > indent:
-                child_indent = _indent_of(lines[index])
+            item: dict[str, Any] = {key.strip(): parse_yaml_scalar(value_text.strip()) if value_text.strip() else {}}
+            if index < len(lines) and indent_of(lines[index]) > indent:
+                child_indent = indent_of(lines[index])
                 if child_indent != indent + 2:
                     raise YamlError("Sequence mapping entries must use 2-space indentation")
-                extra, index = _parse_mapping(lines, index, indent + 2)
+                extra, index = parse_mapping(lines, index, indent + 2)
                 item.update(extra)
             items.append(item)
             continue
-        items.append(_parse_scalar(remainder))
+        items.append(parse_yaml_scalar(remainder))
     return items, index
 
 
 def loads(content: str) -> Result[Any, AppError]:
+    """把 YAML 文本解析为 Python 值。"""
+
     try:
-        lines = _clean_lines(content)
+        lines = clean_lines(content)
         if not lines:
             return Result.ok({})
-        parsed, index = _parse_block(lines, 0, 0)
+        parsed, index = parse_block(lines, 0, 0)
         if index != len(lines):
             raise YamlError("Trailing YAML content could not be parsed")
     except YamlError as exc:
@@ -146,7 +165,9 @@ def loads(content: str) -> Result[Any, AppError]:
     return Result.ok(parsed)
 
 
-def _format_scalar(value: Any, *, quote_strings: bool) -> str:
+def format_yaml_scalar(value: Any, *, quote_strings: bool) -> str:
+    """把 Python 标量格式化为 YAML 字面量。"""
+
     if value is None:
         return "null"
     if isinstance(value, bool):
@@ -158,7 +179,9 @@ def _format_scalar(value: Any, *, quote_strings: bool) -> str:
     raise YamlError(f"Unsupported YAML scalar type: {type(value)!r}")
 
 
-def _dump_value(value: Any, indent: int, lines: list[str], *, quote_strings: bool) -> None:
+def dump_yaml_value(value: Any, indent: int, lines: list[str], *, quote_strings: bool) -> None:
+    """递归展开 YAML 值。"""
+
     prefix = " " * indent
     if isinstance(value, dict):
         for key, item in value.items():
@@ -168,25 +191,30 @@ def _dump_value(value: Any, indent: int, lines: list[str], *, quote_strings: boo
                     lines.append(f"{prefix}{key}: {empty}")
                 else:
                     lines.append(f"{prefix}{key}:")
-                    _dump_value(item, indent + 2, lines, quote_strings=quote_strings)
+                    dump_yaml_value(item, indent + 2, lines, quote_strings=quote_strings)
             else:
-                lines.append(f"{prefix}{key}: {_format_scalar(item, quote_strings=quote_strings)}")
+                lines.append(f"{prefix}{key}: {format_yaml_scalar(item, quote_strings=quote_strings)}")
         return
     if isinstance(value, list):
         for item in value:
             if isinstance(item, (dict, list)):
                 lines.append(f"{prefix}-")
-                _dump_value(item, indent + 2, lines, quote_strings=quote_strings)
+                dump_yaml_value(item, indent + 2, lines, quote_strings=quote_strings)
             else:
-                lines.append(f"{prefix}- {_format_scalar(item, quote_strings=quote_strings)}")
+                lines.append(f"{prefix}- {format_yaml_scalar(item, quote_strings=quote_strings)}")
         return
-    lines.append(f"{prefix}{_format_scalar(value, quote_strings=quote_strings)}")
+    lines.append(f"{prefix}{format_yaml_scalar(value, quote_strings=quote_strings)}")
 
 
 def dumps(value: Any, *, quote_strings: bool = True) -> Result[str, AppError]:
+    """把 Python 值序列化为 YAML 文本。"""
+
     try:
         lines: list[str] = []
-        _dump_value(value, 0, lines, quote_strings=quote_strings)
+        dump_yaml_value(value, 0, lines, quote_strings=quote_strings)
     except YamlError as exc:
         return Result.err(app_error(AppErrorCode.PARSE_ERROR, str(exc)))
     return Result.ok("\n".join(lines) + "\n")
+
+
+__all__ = ["YamlError", "dumps", "loads"]

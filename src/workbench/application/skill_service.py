@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
 from ..domain.skill import Skill
 from ..infrastructure.skill_loader import discover_skills

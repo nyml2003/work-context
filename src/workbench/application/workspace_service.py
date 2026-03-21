@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
 from ..domain.workspace import (
     Workspace,
@@ -15,8 +15,8 @@ from ..domain.workspace import (
     parse_check_command,
     resolve_workspace_target,
 )
-from ..fs import short_path
 from ..infrastructure import CommandRunner, GitClient, WorkspaceRegistry
+from ..infrastructure.filesystem import short_path
 
 
 class WorkspaceService:

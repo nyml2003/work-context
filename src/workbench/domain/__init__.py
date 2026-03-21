@@ -1,3 +1,4 @@
+from .config import WorkbenchConfig
 from .errors import AppError, AppErrorCode, app_error, from_exception
 from .skill import (
     ALLOWED_FRONTMATTER_KEYS,
@@ -5,7 +6,6 @@ from .skill import (
     RESOURCE_CHOICES,
     RESOURCE_PATTERN,
     Skill,
-    skill_to_record,
     title_from_skill_name,
 )
 from .workspace import (
@@ -29,6 +29,7 @@ __all__ = [
     "RESOURCE_CHOICES",
     "RESOURCE_PATTERN",
     "Skill",
+    "WorkbenchConfig",
     "Workspace",
     "app_error",
     "build_remote_url",
@@ -36,7 +37,6 @@ __all__ = [
     "is_safe_check_command",
     "normalize_remote_url",
     "resolve_workspace_target",
-    "skill_to_record",
     "stored_workspace_path",
     "title_from_skill_name",
     "workspace_from_record",

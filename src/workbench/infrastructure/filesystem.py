@@ -1,23 +1,22 @@
 from __future__ import annotations
 
+"""通用文件系统辅助能力。"""
+
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 
-def slugify(value: str) -> str:
-    text = value.strip().lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    return text.strip("-") or "item"
-
-
 def ensure_dir(path: Path) -> Path:
+    """确保目录存在。"""
+
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def write_text(path: Path, content: str, *, overwrite: bool = False) -> bool:
+    """写入 UTF-8 文本，按需创建父目录。"""
+
     if path.exists() and not overwrite:
         return False
     ensure_dir(path.parent)
@@ -26,21 +25,25 @@ def write_text(path: Path, content: str, *, overwrite: bool = False) -> bool:
 
 
 def write_json(path: Path, payload: Any) -> None:
+    """写入格式化 JSON。"""
+
     ensure_dir(path.parent)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def read_json(path: Path) -> Any:
+    """读取 UTF-8 JSON 文件。"""
+
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def render_template(template: str, context: dict[str, Any]) -> str:
-    return template.format(**context)
-
-
 def short_path(path: Path, root: Path) -> str:
+    """尽量返回相对根目录的短路径。"""
+
     try:
         return str(path.relative_to(root))
     except ValueError:
         return str(path)
 
+
+__all__ = ["ensure_dir", "read_json", "short_path", "write_json", "write_text"]

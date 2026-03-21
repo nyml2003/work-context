@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..bootstrap import initialize_repo
+from ..application import initialize_repo
 from ..core import Result
 from ..domain.errors import AppError
 from .base import ArgumentSpec, CommandGroup, CommandResult, CommandSpec, RuntimeContext

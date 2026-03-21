@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import WorkbenchConfig
 from ..core import Result
+from ..core.yaml import dumps as yaml_dumps, loads as yaml_loads
+from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError, AppErrorCode, app_error
 from ..domain.skill import RESOURCE_CHOICES, title_from_skill_name
-from ..fs import render_template, slugify, write_text
 from ..infrastructure.skill_templates import load_skill_templates
-from ..yamlish import dumps as yaml_dumps, loads as yaml_loads
+from ..infrastructure.template_rendering import render_template, slugify
+from ..infrastructure.filesystem import write_text
 
 
 def normalize_resource_choices(resources: list[str] | None) -> Result[list[str], AppError]:
