@@ -3,6 +3,51 @@ name: "ui-ux-designer"
 description: "当需要从产品 UI/UX 设计师视角规划、评审或改进数字界面时使用，包括 CSS 样式表现、视觉层级、视图布局、交互反馈、动画节奏、用户动线、信息架构与可访问性。适用于 Web、移动端、桌面端和大屏等数字产品界面；默认输出设计方案、体验评审意见、问题清单与改版建议，而不是前端工程实现。"
 metadata:
   short-description: "从 UI/UX 设计师视角输出界面方案与体验评审"
+  workbench:
+    role-fit:
+      - "policy"
+    domain-tags:
+      - "frontend"
+      - "design"
+    capabilities:
+      - "design-review"
+    default-blocks:
+      - "overview"
+      - "design-discovery"
+      - "visual-language"
+      - "layout-and-composition"
+      - "interaction-patterns"
+      - "motion-and-animation"
+      - "user-flow-and-journeys"
+      - "design-review-checklist"
+    recommends:
+      - "ui-worker"
+    handoff-outputs:
+      - "design-review-summary"
+    blocks:
+      - name: "overview"
+        kind: "overview"
+      - name: "design-discovery"
+        kind: "reference"
+        path: "references/design-discovery.md"
+      - name: "design-review-checklist"
+        kind: "reference"
+        path: "references/design-review-checklist.md"
+      - name: "interaction-patterns"
+        kind: "reference"
+        path: "references/interaction-patterns.md"
+      - name: "layout-and-composition"
+        kind: "reference"
+        path: "references/layout-and-composition.md"
+      - name: "motion-and-animation"
+        kind: "reference"
+        path: "references/motion-and-animation.md"
+      - name: "user-flow-and-journeys"
+        kind: "reference"
+        path: "references/user-flow-and-journeys.md"
+      - name: "visual-language"
+        kind: "reference"
+        path: "references/visual-language.md"
 ---
 
 # UI UX Designer

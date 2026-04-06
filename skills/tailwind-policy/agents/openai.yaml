@@ -1,0 +1,7 @@
+interface:
+  display_name: "Tailwind Policy"
+  short_description: "给出 Tailwind 使用约束"
+  default_prompt: "使用 $tailwind-policy 总结当前前端任务的 Tailwind 类名组织、变体和抽象边界，再交给 UI worker 落地。"
+policy:
+  allow_implicit_invocation: true
+

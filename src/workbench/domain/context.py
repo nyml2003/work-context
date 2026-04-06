@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .skill import SkillBundleReference
+from .skill import SkillBundleReference, SkillLoadedBlock, SkillScriptEntry
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,8 +33,10 @@ class ContextWorkspaceSummary:
 class ContextPayload:
     """完整上下文载荷。"""
 
-    skill: ContextSkillSummary
+    selected_skills: list[ContextSkillSummary]
+    loaded_blocks: list[SkillLoadedBlock]
     references: list[SkillBundleReference]
+    script_entries: list[SkillScriptEntry]
     bundle_markdown: str
     workspace: ContextWorkspaceSummary | None = None
 

@@ -1,0 +1,11 @@
+{
+  "bundle_contains": [
+    "name: \"eslint-policy\"",
+    "Lint 判断规则",
+    "禁用与导入约束"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0,
+  "loaded_blocks": ["overview", "lint-decision-rules", "suppression-and-imports"]
+}
+

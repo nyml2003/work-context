@@ -3,6 +3,29 @@ name: "local-cli-operations"
 description: "当需要在当前终端工作目录内执行基础本地文件与目录操作时使用，优先通过 workbench 的 local CLI 统一读写、搜索和查看路径信息。"
 metadata:
   short-description: "用 local CLI 做本地文件操作"
+  workbench:
+    role-fit:
+      - "worker"
+    domain-tags:
+      - "local"
+    capabilities:
+      - "local-cli"
+    default-blocks:
+      - "overview"
+      - "cli-quickstart"
+      - "path-boundary"
+    recommends: []
+    handoff-outputs:
+      - "local-operation-plan"
+    blocks:
+      - name: "overview"
+        kind: "overview"
+      - name: "cli-quickstart"
+        kind: "reference"
+        path: "references/cli-quickstart.md"
+      - name: "path-boundary"
+        kind: "reference"
+        path: "references/path-boundary.md"
 ---
 
 # Local CLI 操作

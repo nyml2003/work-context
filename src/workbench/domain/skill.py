@@ -7,16 +7,37 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..core.serialization import JsonValue
-from ..core.yaml import YamlMapping
+from ..core.yaml import YamlMapping, YamlValue
 
-ALLOWED_FRONTMATTER_KEYS = {"name", "description", "license", "allowed-tools", "metadata"}
-ALLOWED_METADATA_KEYS = {"short-description"}
+ALLOWED_FRONTMATTER_KEYS = {
+    "name",
+    "description",
+    "license",
+    "metadata",
+    "argument-hint",
+    "compatibility",
+    "disable-model-invocation",
+    "user-invokable",
+}
+ALLOWED_METADATA_KEYS = {"short-description", "workbench"}
+ALLOWED_WORKBENCH_METADATA_KEYS = {
+    "role-fit",
+    "domain-tags",
+    "capabilities",
+    "default-blocks",
+    "recommends",
+    "handoff-outputs",
+    "blocks",
+}
+ALLOWED_BLOCK_KEYS = {"name", "kind", "path"}
 ALLOWED_OPENAI_KEYS = {"interface", "policy"}
 ALLOWED_INTERFACE_KEYS = {"display_name", "short_description", "default_prompt"}
 ALLOWED_POLICY_KEYS = {"allow_implicit_invocation"}
 NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-RESOURCE_PATTERN = re.compile(r"(?P<path>(?:agents|references|scripts|assets)/[A-Za-z0-9._/\\-]+)")
+RESOURCE_PATTERN = re.compile(r"(?P<path>(?:references|scripts)/[A-Za-z0-9._/\\-]+)")
 RESOURCE_CHOICES = ("scripts", "references", "assets")
+ROLE_CHOICES = ("director", "policy", "worker", "review")
+BLOCK_KIND_CHOICES = ("overview", "reference", "script_entry")
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,13 +48,28 @@ class SkillMetadata:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillBlock:
+    """`SKILL.md` front matter 中声明的可装配块。"""
+
+    name: str
+    kind: str
+    path: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SkillFrontmatter:
     """`SKILL.md` front matter 的强类型模型。"""
 
     name: str
     description: str
+    role_fit: list[str]
+    domain_tags: list[str]
+    capabilities: list[str]
+    default_blocks: list[str]
+    recommends: list[str]
+    handoff_outputs: list[str]
+    blocks: list[SkillBlock]
     license: str | None = None
-    allowed_tools: list[str] = field(default_factory=list)
     metadata: SkillMetadata = field(default_factory=SkillMetadata)
 
 
@@ -89,13 +125,38 @@ class SkillIssue:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillLoadedBlock:
+    """一次上下文装配中已加载的块。"""
+
+    skill: str
+    name: str
+    kind: str
+    path: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SkillScriptEntry:
+    """上下文中暴露给 agent 的脚本入口。"""
+
+    skill: str
+    name: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
 class SkillSummary:
     """面向 CLI / report 的 skill 摘要。"""
 
     name: str
     description: str
     path: str
-    frontmatter: dict[str, JsonValue]
+    role_fit: list[str]
+    domain_tags: list[str]
+    capabilities: list[str]
+    default_blocks: list[str]
+    recommends: list[str]
+    handoff_outputs: list[str]
+    blocks: list[SkillBlock]
     agents_path: str | None
     agents_config: dict[str, JsonValue] | None
     references: list[str]
@@ -124,6 +185,17 @@ class SkillBundleReference:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillAssembly:
+    """单个 skill 的装配结果。"""
+
+    skill: str
+    loaded_blocks: list[SkillLoadedBlock]
+    references: list[SkillBundleReference]
+    script_entries: list[SkillScriptEntry]
+    bundle_markdown: str
+
+
+@dataclass(frozen=True, slots=True)
 class SkillTestResult:
     """单个 fixture 的执行结果。"""
 
@@ -134,6 +206,10 @@ class SkillTestResult:
     missing_strings: list[str] = field(default_factory=list)
     expected_reference_count: int | None = None
     actual_reference_count: int | None = None
+    expected_script_entry_count: int | None = None
+    actual_script_entry_count: int | None = None
+    expected_loaded_blocks: list[str] = field(default_factory=list)
+    actual_loaded_blocks: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +238,26 @@ class SkillLinkPayload:
     linked: list[SkillLinkRecord]
 
 
+def block_to_payload(block: SkillBlock) -> dict[str, JsonValue]:
+    payload: dict[str, JsonValue] = {
+        "name": block.name,
+        "kind": block.kind,
+    }
+    if block.path is not None:
+        payload["path"] = block.path
+    return payload
+
+
+def block_to_yaml(block: SkillBlock) -> YamlMapping:
+    payload: YamlMapping = {
+        "name": block.name,
+        "kind": block.kind,
+    }
+    if block.path is not None:
+        payload["path"] = block.path
+    return payload
+
+
 def frontmatter_to_yaml(frontmatter: SkillFrontmatter) -> YamlMapping:
     """把 front matter 还原成 YAML 需要的原始键名。"""
 
@@ -171,13 +267,20 @@ def frontmatter_to_yaml(frontmatter: SkillFrontmatter) -> YamlMapping:
     }
     if frontmatter.license is not None:
         payload["license"] = frontmatter.license
-    if frontmatter.allowed_tools:
-        payload["allowed-tools"] = list(frontmatter.allowed_tools)
-    metadata: YamlMapping = {}
+    metadata: YamlMapping = {
+        "workbench": {
+            "role-fit": list(frontmatter.role_fit),
+            "domain-tags": list(frontmatter.domain_tags),
+            "capabilities": list(frontmatter.capabilities),
+            "default-blocks": list(frontmatter.default_blocks),
+            "recommends": list(frontmatter.recommends),
+            "handoff-outputs": list(frontmatter.handoff_outputs),
+            "blocks": [block_to_yaml(block) for block in frontmatter.blocks],
+        }
+    }
     if frontmatter.metadata.short_description is not None:
         metadata["short-description"] = frontmatter.metadata.short_description
-    if metadata:
-        payload["metadata"] = metadata
+    payload["metadata"] = metadata
     return payload
 
 
@@ -190,13 +293,20 @@ def frontmatter_to_payload(frontmatter: SkillFrontmatter) -> dict[str, JsonValue
     }
     if frontmatter.license is not None:
         payload["license"] = frontmatter.license
-    if frontmatter.allowed_tools:
-        payload["allowed-tools"] = list(frontmatter.allowed_tools)
-    metadata: dict[str, JsonValue] = {}
+    metadata: dict[str, JsonValue] = {
+        "workbench": {
+            "role-fit": list(frontmatter.role_fit),
+            "domain-tags": list(frontmatter.domain_tags),
+            "capabilities": list(frontmatter.capabilities),
+            "default-blocks": list(frontmatter.default_blocks),
+            "recommends": list(frontmatter.recommends),
+            "handoff-outputs": list(frontmatter.handoff_outputs),
+            "blocks": [block_to_payload(block) for block in frontmatter.blocks],
+        }
+    }
     if frontmatter.metadata.short_description is not None:
         metadata["short-description"] = frontmatter.metadata.short_description
-    if metadata:
-        payload["metadata"] = metadata
+    payload["metadata"] = metadata
     return payload
 
 
@@ -246,32 +356,55 @@ def title_from_skill_name(name: str) -> str:
     return " ".join(part.capitalize() for part in name.split("-"))
 
 
+def block_lookup(blocks: list[SkillBlock]) -> dict[str, SkillBlock]:
+    return {block.name: block for block in blocks}
+
+
+def payload_to_yaml_value(value: JsonValue) -> YamlValue:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        return [payload_to_yaml_value(item) for item in value]
+    return {key: payload_to_yaml_value(item) for key, item in value.items()}
+
+
 __all__ = [
+    "ALLOWED_BLOCK_KEYS",
     "ALLOWED_FRONTMATTER_KEYS",
     "ALLOWED_INTERFACE_KEYS",
     "ALLOWED_METADATA_KEYS",
     "ALLOWED_OPENAI_KEYS",
     "ALLOWED_POLICY_KEYS",
+    "ALLOWED_WORKBENCH_METADATA_KEYS",
+    "BLOCK_KIND_CHOICES",
     "NAME_PATTERN",
     "RESOURCE_CHOICES",
     "RESOURCE_PATTERN",
+    "ROLE_CHOICES",
     "Skill",
     "SkillAgentInterface",
     "SkillAgentPolicy",
     "SkillAgentsConfig",
+    "SkillAssembly",
+    "SkillBlock",
     "SkillBundleReference",
     "SkillFrontmatter",
     "SkillIssue",
     "SkillLintPayload",
-    "SkillMetadata",
-    "SkillSummary",
     "SkillLinkPayload",
     "SkillLinkRecord",
+    "SkillLoadedBlock",
+    "SkillMetadata",
+    "SkillScriptEntry",
+    "SkillSummary",
     "SkillTestPayload",
     "SkillTestResult",
     "agents_config_to_payload",
     "agents_config_to_yaml",
+    "block_lookup",
+    "block_to_payload",
     "frontmatter_to_payload",
     "frontmatter_to_yaml",
+    "payload_to_yaml_value",
     "title_from_skill_name",
 ]

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Frontend Director"
+  short_description: "拆解前端任务并规划子 agent 装配"
+  default_prompt: "使用 $frontend-director 拆解当前前端任务，明确子任务、依赖、并行边界和最小 skill 装配。"
+policy:
+  allow_implicit_invocation: true
+

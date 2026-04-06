@@ -1,0 +1,7 @@
+interface:
+  display_name: "Parallel Planner"
+  short_description: "规划前端任务的并行与串行边界"
+  default_prompt: "使用 $parallel-planner 判断当前前端任务哪些步骤可以并行、哪些必须串行，并说明冲突原因。"
+policy:
+  allow_implicit_invocation: true
+

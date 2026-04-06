@@ -1,0 +1,7 @@
+interface:
+  display_name: "Frontend Testing"
+  short_description: "评审前端测试覆盖与验收路径"
+  default_prompt: "使用 $frontend-testing 评审当前前端改动的测试覆盖、验收路径和可测试性，并输出结构化结论。"
+policy:
+  allow_implicit_invocation: true
+

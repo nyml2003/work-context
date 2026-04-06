@@ -1,0 +1,10 @@
+{
+  "bundle_contains": [
+    "name: \"logging-policy\"",
+    "事件设计",
+    "隐私与信号质量"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0,
+  "loaded_blocks": ["overview", "event-design", "privacy-and-signal-quality"]
+}

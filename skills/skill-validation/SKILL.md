@@ -3,6 +3,30 @@ name: "skill-validation"
 description: "当已经在这个仓库里创建或修改了一个 Codex skill，需要用当前 workbench CLI 做创建后自检时使用，包括结构校验、bundle 检查、测试夹具验证，以及链接前确认。"
 metadata:
   short-description: "校验新建或修改后的 Codex skill"
+  workbench:
+    role-fit:
+      - "review"
+    domain-tags:
+      - "skills"
+    capabilities:
+      - "skill-validation"
+    default-blocks:
+      - "overview"
+      - "workbench-validation-flow"
+      - "acceptance-checklist"
+    recommends:
+      - "local-cli-operations"
+    handoff-outputs:
+      - "validation-report"
+    blocks:
+      - name: "overview"
+        kind: "overview"
+      - name: "workbench-validation-flow"
+        kind: "reference"
+        path: "references/workbench-validation-flow.md"
+      - name: "acceptance-checklist"
+        kind: "reference"
+        path: "references/acceptance-checklist.md"
 ---
 
 # Skill 创建校验

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Logging Policy"
+  short_description: "给出日志与诊断约束"
+  default_prompt: "使用 $logging-policy 先定义当前前端任务的事件设计、隐私边界和信号质量，再交给 logging worker 接入。"
+policy:
+  allow_implicit_invocation: true
+

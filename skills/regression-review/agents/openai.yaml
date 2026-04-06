@@ -1,0 +1,7 @@
+interface:
+  display_name: "Regression Review"
+  short_description: "评审前端回归风险与发布准备"
+  default_prompt: "使用 $regression-review 从回归风险、跨功能影响和发布准备角度评审当前前端改动，并输出结构化结论。"
+policy:
+  allow_implicit_invocation: true
+

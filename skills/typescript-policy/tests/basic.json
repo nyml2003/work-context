@@ -1,0 +1,11 @@
+{
+  "bundle_contains": [
+    "name: \"typescript-policy\"",
+    "类型边界",
+    "状态与错误模型"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0,
+  "loaded_blocks": ["overview", "type-boundaries", "state-and-error-models"]
+}
+

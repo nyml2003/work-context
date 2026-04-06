@@ -1,11 +1,14 @@
-# {title} Reference
+# {title}
 
-Use this file for details that should be loaded only when needed.
+## 适用时机
 
-## Suggested Contents
+- 说明什么情况下应读取这份 reference。
 
-- Decision rules
-- API or file format notes
-- Domain constraints
-- Reusable examples
+## 默认规则
 
+1. 写这里的判断规则，而不是泛泛介绍。
+2. 说明什么做法应优先、什么做法应避免。
+
+## 输出
+
+- 说明读完这份 reference 后，应该给下游什么结果。

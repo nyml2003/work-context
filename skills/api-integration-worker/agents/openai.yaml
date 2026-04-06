@@ -1,0 +1,7 @@
+interface:
+  display_name: "API Integration Worker"
+  short_description: "实现前端 API 调用与响应映射"
+  default_prompt: "使用 $api-integration-worker 根据上游约束实现当前前端任务的 API 调用、响应映射和失败路径，并输出交接摘要。"
+policy:
+  allow_implicit_invocation: true
+

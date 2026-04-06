@@ -1,0 +1,11 @@
+{
+  "bundle_contains": [
+    "name: \"tsx-policy\"",
+    "组件边界",
+    "渲染与可访问性"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0,
+  "loaded_blocks": ["overview", "component-boundaries", "rendering-and-accessibility"]
+}
+

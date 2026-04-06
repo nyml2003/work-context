@@ -51,6 +51,11 @@ def run_cli_json(root: Path, argv: list[str]) -> tuple[int, dict[str, object]]:
     return code, payload
 
 
+def assert_directory_link(testcase: unittest.TestCase, destination: Path, source: Path) -> None:
+    testcase.assertTrue(destination.exists())
+    testcase.assertEqual(destination.resolve(), source.resolve())
+
+
 def unwrap_cli_success(testcase: unittest.TestCase, code: int, payload: dict[str, object]) -> dict[str, object]:
     testcase.assertTrue(payload["ok"])
     return payload["value"]
@@ -147,6 +152,22 @@ class WorkbenchTestCase(unittest.TestCase):
         self.assertEqual(expect_ok(service.lint_skills()).issue_count, 0)
         self.assertEqual(expect_ok(service.test_skills()).failure_count, 0)
 
+    def test_skill_new_defaults_to_reference_blueprint(self) -> None:
+        root = make_temp_dir()
+        expect_ok(initialize_repo(root, include_samples=True))
+        code, payload = run_cli_json(root, ["skill", "new", "naming-policy", "--role", "policy"])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertEqual(code, 0)
+        created = Path(value["created"])
+        self.assertTrue(created.exists())
+        self.assertTrue((created / "references" / "decision-rules.md").exists())
+        self.assertTrue((created / "references" / "output-contract.md").exists())
+        self.assertTrue((created / "agents" / "openai.yaml").exists())
+        config = expect_ok(load_config(root))
+        summary = expect_ok(SkillService(config).inspect_skill("naming-policy"))
+        self.assertEqual(summary.default_blocks, ["overview", "decision-rules", "output-contract"])
+        self.assertEqual([block.name for block in summary.blocks], ["overview", "decision-rules", "output-contract"])
+
     def test_context_payload_contains_references(self) -> None:
         config = expect_ok(load_config(REPO_ROOT))
         payload = expect_ok(ContextService(config).build_context_payload("codex-skill-authoring"))
@@ -169,8 +190,7 @@ class WorkbenchTestCase(unittest.TestCase):
         linked = expect_ok(SkillService(config).link_skills(name="codex-skill-authoring", target_root=target))
         self.assertEqual(len(linked), 1)
         destination = target / "codex-skill-authoring"
-        self.assertTrue(destination.is_symlink())
-        self.assertEqual(destination.resolve(), (REPO_ROOT / "skills" / "codex-skill-authoring").resolve())
+        assert_directory_link(self, destination, REPO_ROOT / "skills" / "codex-skill-authoring")
         self.assertEqual(linked[0].status, "linked")
 
     def test_link_skill_is_idempotent(self) -> None:
@@ -195,7 +215,7 @@ class WorkbenchTestCase(unittest.TestCase):
             os.chdir(old_cwd)
         self.assertEqual(code, 0)
         payload = json.loads(output.read_text(encoding="utf-8"))
-        self.assertEqual(payload["skill"]["name"], "codex-skill-authoring")
+        self.assertEqual(payload["selected_skills"][0]["name"], "codex-skill-authoring")
 
     def test_workspace_registry_and_safe_check(self) -> None:
         root = make_temp_dir()
@@ -328,8 +348,7 @@ class WorkbenchTestCase(unittest.TestCase):
         value = unwrap_cli_success(self, code, payload)
         self.assertEqual(code, 0)
         self.assertEqual(value["status"], "linked")
-        self.assertTrue(target.is_symlink())
-        self.assertEqual(target.resolve(), (root / "scripts").resolve())
+        assert_directory_link(self, target, root / "scripts")
 
         code, payload = run_cli_json(root, ["workspace", "link-scripts"])
         value = unwrap_cli_success(self, code, payload)
@@ -347,8 +366,104 @@ class WorkbenchTestCase(unittest.TestCase):
         self.assertEqual(value["target"], str(target))
         self.assertEqual(value["linked"][0]["status"], "linked")
         destination = target / "codex-skill-authoring"
-        self.assertTrue(destination.is_symlink())
-        self.assertEqual(destination.resolve(), (root / "skills" / "codex-skill-authoring").resolve())
+        assert_directory_link(self, destination, root / "skills" / "codex-skill-authoring")
+
+    def test_agent_plan_generates_frontend_subtasks(self) -> None:
+        task_id = f"settings-page-{uuid.uuid4().hex}"
+        task_file = make_temp_dir() / "task.json"
+        task_file.write_text(
+            json.dumps(
+                {
+                    "id": task_id,
+                    "domain": "frontend",
+                    "title": "Build settings page",
+                    "objective": "Implement a settings page with API integration and logging",
+                    "workstreams": ["ui", "logic", "api", "logging"],
+                    "constraints": ["typescript", "tsx", "tailwind", "eslint"],
+                    "acceptance_criteria": ["Page renders", "API errors are handled"],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        code, payload = run_cli_json(REPO_ROOT, ["agent", "plan", str(task_file)])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(value["task"]["task_id"], task_id)
+        self.assertEqual(value["subtasks"][0]["role"], "director")
+        self.assertIn("ui-policy", [item["subtask_id"] for item in value["subtasks"]])
+        self.assertIn("regression-review", [item["subtask_id"] for item in value["subtasks"]])
+
+    def test_agent_resolve_selects_minimal_policy_skills(self) -> None:
+        task_id = f"settings-page-{uuid.uuid4().hex}"
+        task_file = make_temp_dir() / "task.json"
+        task_file.write_text(
+            json.dumps(
+                {
+                    "id": task_id,
+                    "domain": "frontend",
+                    "title": "Build settings page",
+                    "workstreams": ["ui"],
+                    "constraints": ["tsx", "tailwind", "eslint"],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        code, payload = run_cli_json(REPO_ROOT, ["agent", "resolve", str(task_file), "ui-policy"])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(set(value["selected_skills"]), {"tsx-policy", "tailwind-policy", "eslint-policy"})
+
+    def test_agent_assemble_and_trace(self) -> None:
+        task_id = f"settings-page-{uuid.uuid4().hex}"
+        task_file = make_temp_dir() / "task.json"
+        task_file.write_text(
+            json.dumps(
+                {
+                    "id": task_id,
+                    "domain": "frontend",
+                    "title": "Build settings page",
+                    "workstreams": ["ui"],
+                    "constraints": ["tsx", "tailwind", "eslint"],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        code, payload = run_cli_json(REPO_ROOT, ["agent", "assemble", str(task_file), "ui-implementation"])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(value["selected_skills"][0]["name"], "ui-worker")
+        self.assertEqual([item["name"] for item in value["loaded_blocks"]], ["overview", "implementation-playbook", "handoff-checklist"])
+        code, payload = run_cli_json(REPO_ROOT, ["agent", "trace", task_id])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertIn("ui-implementation", value["assemblies"])
+
+    def test_agent_handoff_validate(self) -> None:
+        handoff_file = make_temp_dir() / "handoff.json"
+        handoff_file.write_text(
+            json.dumps(
+                {
+                    "task_id": "settings-page",
+                    "subtask_id": "ui-implementation",
+                    "producer_role": "worker",
+                    "consumer_role": "review",
+                    "summary": "Implemented the UI shell.",
+                    "decisions": ["Use stacked mobile layout."],
+                    "artifacts": ["settings-page component"],
+                    "acceptance_criteria": ["Page renders"],
+                    "open_questions": [],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        code, payload = run_cli_json(REPO_ROOT, ["agent", "handoff-validate", str(handoff_file)])
+        value = unwrap_cli_success(self, code, payload)
+        self.assertEqual(code, 0)
+        self.assertTrue(value["valid"])
+        self.assertEqual(value["artifact_count"], 1)
 
     def test_cli_uses_command_group_loader(self) -> None:
         source = (SRC_DIR / "workbench" / "cli.py").read_text(encoding="utf-8")
@@ -363,6 +478,7 @@ class WorkbenchTestCase(unittest.TestCase):
         self.assertEqual(
             command_files,
             {
+                "agent_command.py",
                 "context_command.py",
                 "init_command.py",
                 "local_command.py",

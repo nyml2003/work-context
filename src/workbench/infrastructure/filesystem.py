@@ -3,6 +3,8 @@ from __future__ import annotations
 """通用文件系统辅助能力。"""
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from ..core.serialization import JsonValue, to_plain_data
@@ -40,7 +42,7 @@ def write_json(path: Path, payload: object) -> None:
 def read_json(path: Path) -> JsonValue:
     """读取 UTF-8 JSON 文件。"""
 
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def short_path(path: Path, root: Path) -> str:
@@ -52,14 +54,32 @@ def short_path(path: Path, root: Path) -> str:
         return str(path)
 
 
-def same_symlink_target(link_path: Path, source: Path) -> bool:
-    """判断现有符号链接是否已经指向目标目录。"""
+def same_directory_link_target(link_path: Path, source: Path) -> bool:
+    """判断现有目录链接是否已经指向目标目录。"""
 
-    return link_path.is_symlink() and normalized_path(link_path) == normalized_path(source)
+    if not link_path.exists():
+        return False
+    try:
+        return link_path.resolve() == normalized_path(source)
+    except OSError:
+        return False
+
+
+def create_windows_junction(source: Path, destination: Path) -> None:
+    """在 Windows 上回退到目录 junction，避免 symlink 特权要求。"""
+
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(destination), str(source)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise OSError(completed.stderr.strip() or completed.stdout.strip() or "mklink /J failed")
 
 
 def ensure_directory_symlink(source: Path, destination: Path) -> str:
-    """创建目录符号链接，已存在且同源时保持幂等。"""
+    """创建目录链接，已存在且同源时保持幂等。"""
 
     resolved_source = normalized_path(source)
     if not resolved_source.exists():
@@ -68,11 +88,18 @@ def ensure_directory_symlink(source: Path, destination: Path) -> str:
         raise NotADirectoryError(f"Expected a directory path: {resolved_source}")
     destination = destination.expanduser()
     if destination.exists() or destination.is_symlink():
-        if same_symlink_target(destination, resolved_source):
+        if same_directory_link_target(destination, resolved_source):
             return "unchanged"
         raise FileExistsError(f"Destination already exists: {destination}")
     ensure_dir(destination.parent)
-    destination.symlink_to(resolved_source, target_is_directory=True)
+    try:
+        destination.symlink_to(resolved_source, target_is_directory=True)
+    except OSError as exc:
+        if sys.platform != "win32":
+            raise
+        if getattr(exc, "winerror", None) != 1314:
+            raise
+        create_windows_junction(resolved_source, destination)
     return "linked"
 
 
@@ -81,7 +108,7 @@ __all__ = [
     "ensure_directory_symlink",
     "normalized_path",
     "read_json",
-    "same_symlink_target",
+    "same_directory_link_target",
     "short_path",
     "write_json",
     "write_text",

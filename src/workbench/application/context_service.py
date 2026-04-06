@@ -27,35 +27,43 @@ class ContextService:
         self.skill_service = skill_service or SkillService(config)
         self.workspace_service = workspace_service or WorkspaceService(config)
 
-    def build_context_payload(self, skill_name: str, workspace_name: str | None = None) -> Result[ContextPayload, AppError]:
-        """组装上下文 payload。
-
-        这是命令层和后续自动化流程读取 skill 上下文的稳定入口。
-        """
+    def build_context_payload(
+        self,
+        skill_name: str,
+        workspace_name: str | None = None,
+        *,
+        block_names: list[str] | None = None,
+    ) -> Result[ContextPayload, AppError]:
+        """组装上下文 payload。"""
 
         skill = self.skill_service.find_skill(skill_name)
         if skill.is_err:
             return Result.err(skill.error)
-        bundle = self.skill_service.render_bundle(skill.value)
-        if bundle.is_err:
-            return Result.err(bundle.error)
+        assembly = self.skill_service.assemble_skill(skill.value, block_names=block_names)
+        if assembly.is_err:
+            return Result.err(assembly.error)
         payload = ContextPayload(
-            skill=ContextSkillSummary(
-                name=skill.value.name,
-                description=skill.value.description,
-                path=str(skill.value.path),
-            ),
-            references=bundle.value[1],
-            bundle_markdown=bundle.value[0],
+            selected_skills=[
+                ContextSkillSummary(
+                    name=skill.value.name,
+                    description=skill.value.description,
+                    path=str(skill.value.path),
+                )
+            ],
+            loaded_blocks=assembly.value.loaded_blocks,
+            references=assembly.value.references,
+            script_entries=assembly.value.script_entries,
+            bundle_markdown=assembly.value.bundle_markdown,
         )
         if workspace_name:
-            # workspace 信息是可选增强信息，不影响 skill bundle 的基础构建链路。
             workspace = self.workspace_service.get_workspace(workspace_name)
             if workspace.is_err:
                 return Result.err(workspace.error)
             payload = ContextPayload(
-                skill=payload.skill,
+                selected_skills=payload.selected_skills,
+                loaded_blocks=payload.loaded_blocks,
                 references=payload.references,
+                script_entries=payload.script_entries,
                 bundle_markdown=payload.bundle_markdown,
                 workspace=ContextWorkspaceSummary(
                     name=workspace.value.name,
@@ -76,10 +84,11 @@ class ContextService:
         workspace_name: str | None = None,
         output_path: Path | None = None,
         format_name: str = "md",
+        block_names: list[str] | None = None,
     ) -> Result[Path, AppError]:
         """把上下文 payload 序列化到文件。"""
 
-        payload = self.build_context_payload(skill_name, workspace_name)
+        payload = self.build_context_payload(skill_name, workspace_name, block_names=block_names)
         if payload.is_err:
             return Result.err(payload.error)
         if output_path is None:
@@ -90,7 +99,6 @@ class ContextService:
             if format_name == "json":
                 write_json(output_path, payload.value)
                 return Result.ok(output_path)
-
             text = payload.value.bundle_markdown
             if payload.value.workspace is not None:
                 workspace = payload.value.workspace

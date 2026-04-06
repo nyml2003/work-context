@@ -1,0 +1,7 @@
+interface:
+  display_name: "ESLint Policy"
+  short_description: "给出前端 lint 约束"
+  default_prompt: "使用 $eslint-policy 总结当前前端任务里会影响实现结构的 lint 规则、禁用边界和导入纪律。"
+policy:
+  allow_implicit_invocation: true
+

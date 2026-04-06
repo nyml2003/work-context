@@ -1,0 +1,7 @@
+interface:
+  display_name: "TSX Policy"
+  short_description: "给出 TSX 组件与渲染约束"
+  default_prompt: "使用 $tsx-policy 先定义当前前端任务的组件边界、props 设计和渲染约束，再交给 UI 实现侧。"
+policy:
+  allow_implicit_invocation: true
+

@@ -3,6 +3,56 @@ name: "frontend-engineer"
 description: "当需要以资深前端工程师标准规划、实现、重构或验收 React/TypeScript 前端工程时使用，包括 React LTS 作为协调层、TypeScript LTS + TSX、手写 CSS 原子类、自维护 design tokens 与 UI 库，以及 Web 应用、纯逻辑 TS 工具库、Node 项目的全生命周期工程设计、开发、测试、打包、发布与演进。"
 metadata:
   short-description: "按全生命周期规范交付 React/TypeScript 前端工程"
+  workbench:
+    role-fit:
+      - "worker"
+    domain-tags:
+      - "frontend"
+    capabilities:
+      - "frontend-generalist"
+    default-blocks:
+      - "overview"
+      - "discovery-and-scoping"
+      - "architecture"
+      - "project-bootstrapping"
+      - "styling-and-ui"
+      - "development-workflow"
+      - "testing-and-acceptance"
+      - "build-and-release"
+      - "maintenance-and-evolution"
+    recommends:
+      - "frontend-director"
+      - "typescript-policy"
+      - "tsx-policy"
+    handoff-outputs:
+      - "frontend-implementation-summary"
+    blocks:
+      - name: "overview"
+        kind: "overview"
+      - name: "architecture"
+        kind: "reference"
+        path: "references/architecture.md"
+      - name: "build-and-release"
+        kind: "reference"
+        path: "references/build-and-release.md"
+      - name: "development-workflow"
+        kind: "reference"
+        path: "references/development-workflow.md"
+      - name: "discovery-and-scoping"
+        kind: "reference"
+        path: "references/discovery-and-scoping.md"
+      - name: "maintenance-and-evolution"
+        kind: "reference"
+        path: "references/maintenance-and-evolution.md"
+      - name: "project-bootstrapping"
+        kind: "reference"
+        path: "references/project-bootstrapping.md"
+      - name: "styling-and-ui"
+        kind: "reference"
+        path: "references/styling-and-ui.md"
+      - name: "testing-and-acceptance"
+        kind: "reference"
+        path: "references/testing-and-acceptance.md"
 ---
 
 # Frontend Engineer

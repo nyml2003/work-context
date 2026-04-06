@@ -1,0 +1,7 @@
+interface:
+  display_name: "Logic Worker"
+  short_description: "实现前端状态流与派生逻辑"
+  default_prompt: "使用 $logic-worker 根据上游约束实现当前前端任务的状态流、派生逻辑和 hooks，并输出交接摘要。"
+policy:
+  allow_implicit_invocation: true
+

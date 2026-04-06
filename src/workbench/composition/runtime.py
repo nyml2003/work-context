@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..application import ContextService, LocalService, ReportService, SkillService, WorkspaceService
+from ..application import AgentService, ContextService, LocalService, ReportService, SkillService, WorkspaceService
 from ..core import Result
 from ..domain.config import WorkbenchConfig
 from ..domain.errors import AppError
@@ -21,6 +21,7 @@ class ServiceContainer:
 
     config: WorkbenchConfig
     skill: SkillService
+    agent: AgentService
     workspace: WorkspaceService
     context: ContextService
     report: ReportService
@@ -30,10 +31,12 @@ def build_service_container(config: WorkbenchConfig) -> ServiceContainer:
     """按共享依赖一次性装配 service graph。"""
 
     skill_service = SkillService(config)
+    agent_service = AgentService(config, skill_service=skill_service)
     workspace_service = WorkspaceService(config)
     return ServiceContainer(
         config=config,
         skill=skill_service,
+        agent=agent_service,
         workspace=workspace_service,
         context=ContextService(config, skill_service=skill_service, workspace_service=workspace_service),
         report=ReportService(config, skill_service=skill_service, workspace_service=workspace_service),

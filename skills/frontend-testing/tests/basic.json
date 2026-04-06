@@ -1,0 +1,11 @@
+{
+  "bundle_contains": [
+    "name: \"frontend-testing\"",
+    "覆盖评审",
+    "报告模板"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0,
+  "loaded_blocks": ["overview", "coverage-review", "reporting-template"]
+}
+

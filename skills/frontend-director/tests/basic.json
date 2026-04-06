@@ -1,0 +1,11 @@
+{
+  "bundle_contains": [
+    "name: \"frontend-director\"",
+    "任务拆解",
+    "交接边界"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0,
+  "loaded_blocks": ["overview", "task-decomposition", "handoff-boundaries"]
+}
+

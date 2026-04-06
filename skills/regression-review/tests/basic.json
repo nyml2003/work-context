@@ -1,0 +1,10 @@
+{
+  "bundle_contains": [
+    "name: \"regression-review\"",
+    "风险扫描",
+    "发布报告"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0,
+  "loaded_blocks": ["overview", "risk-scan", "release-report"]
+}

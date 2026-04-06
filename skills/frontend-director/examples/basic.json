@@ -1,0 +1,4 @@
+{
+  "request": "把一个设置页前端任务拆成 director、policy、worker、review 可执行子任务，并说明哪些步骤可以并行。"
+}
+

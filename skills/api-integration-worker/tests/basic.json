@@ -1,0 +1,11 @@
+{
+  "bundle_contains": [
+    "name: \"api-integration-worker\"",
+    "传输边界实施",
+    "错误与重试清单"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0,
+  "loaded_blocks": ["overview", "transport-boundary-playbook", "error-and-retry-checklist"]
+}
+

@@ -1,0 +1,7 @@
+interface:
+  display_name: "UI Worker"
+  short_description: "实现前端 UI 结构与交互外观"
+  default_prompt: "使用 $ui-worker 根据上游 handoff 实现当前前端任务的页面结构、组件布局和状态外观，并给出交接摘要。"
+policy:
+  allow_implicit_invocation: true
+

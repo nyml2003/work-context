@@ -1,0 +1,7 @@
+interface:
+  display_name: "Logging Worker"
+  short_description: "实现前端日志与诊断接入"
+  default_prompt: "使用 $logging-worker 根据既定 logging policy 实现当前前端任务的日志、埋点或诊断接入，并输出交接摘要。"
+policy:
+  allow_implicit_invocation: true
+

@@ -12,12 +12,12 @@ from ..domain.errors import AppError
 from ..domain.skill import (
     NAME_PATTERN,
     RESOURCE_PATTERN,
+    ROLE_CHOICES,
     Skill,
     SkillIssue,
     SkillLintPayload,
     SkillSummary,
     agents_config_to_payload,
-    frontmatter_to_payload,
 )
 from ..infrastructure.filesystem import read_json, short_path
 from ..infrastructure.skill_loader import discover_skill_dirs, load_skill
@@ -36,7 +36,13 @@ def skill_to_summary(skill: Skill, root: Path) -> SkillSummary:
         name=skill.name,
         description=skill.description,
         path=short_path(skill.path, root),
-        frontmatter=frontmatter_to_payload(skill.frontmatter),
+        role_fit=list(skill.frontmatter.role_fit),
+        domain_tags=list(skill.frontmatter.domain_tags),
+        capabilities=list(skill.frontmatter.capabilities),
+        default_blocks=list(skill.frontmatter.default_blocks),
+        recommends=list(skill.frontmatter.recommends),
+        handoff_outputs=list(skill.frontmatter.handoff_outputs),
+        blocks=list(skill.frontmatter.blocks),
         agents_path=short_path(skill.agents_path, root) if skill.agents_path else None,
         agents_config=agents_config_to_payload(skill.agents_config) if skill.agents_config else None,
         references=[short_path(path, root) for path in skill.references],
@@ -70,10 +76,27 @@ def collect_frontmatter_issues(skill: Skill, root: Path) -> list[SkillIssue]:
     description = skill.description.strip()
     if not description:
         issues.append(issue("error", "Description cannot be empty", short_path(skill.path / "SKILL.md", root)))
-    if "<" in description or ">" in description:
-        issues.append(issue("error", "Description cannot contain angle brackets", short_path(skill.path / "SKILL.md", root)))
     if len(description) > 1024:
         issues.append(issue("error", "Description is too long", short_path(skill.path / "SKILL.md", root)))
+    invalid_roles = sorted(role for role in skill.frontmatter.role_fit if role not in ROLE_CHOICES)
+    if invalid_roles:
+        issues.append(
+            issue(
+                "error",
+                f"role-fit contains unsupported values: {', '.join(invalid_roles)}",
+                short_path(skill.path / "SKILL.md", root),
+            )
+        )
+    block_names = {block.name for block in skill.frontmatter.blocks}
+    missing_defaults = sorted(name for name in skill.frontmatter.default_blocks if name not in block_names)
+    if missing_defaults:
+        issues.append(
+            issue(
+                "error",
+                f"default-blocks references unknown blocks: {', '.join(missing_defaults)}",
+                short_path(skill.path / "SKILL.md", root),
+            )
+        )
     return issues
 
 
@@ -83,9 +106,6 @@ def collect_agents_issues(skill: Skill, root: Path) -> list[SkillIssue]:
     if skill.agents_path is None or skill.agents_config is None:
         return []
     issues: list[SkillIssue] = []
-    short_description = skill.agents_config.interface.short_description
-    if short_description is not None and not isinstance(short_description, str):
-        issues.append(issue("error", "interface.short_description must be a string", short_path(skill.agents_path, root)))
     default_prompt = skill.agents_config.interface.default_prompt
     if default_prompt is not None and f"${skill.name}" not in default_prompt:
         issues.append(
@@ -109,6 +129,18 @@ def collect_resource_reference_issues(skill: Skill, root: Path) -> list[SkillIss
                 issue(
                     "error",
                     f"Referenced resource does not exist: {match.group('path')}",
+                    short_path(skill.path / "SKILL.md", root),
+                )
+            )
+    for block in skill.frontmatter.blocks:
+        if block.path is None:
+            continue
+        candidate = skill.path / block.path
+        if not candidate.exists():
+            issues.append(
+                issue(
+                    "error",
+                    f"Block '{block.name}' points to missing file: {block.path}",
                     short_path(skill.path / "SKILL.md", root),
                 )
             )
@@ -145,7 +177,23 @@ def collect_fixture_issues(skill: Skill, root: Path) -> list[SkillIssue]:
     return issues
 
 
-def collect_skill_issues(skill: Skill, root: Path) -> list[SkillIssue]:
+def collect_recommendation_issues(skill: Skill, root: Path, *, known_skills: set[str]) -> list[SkillIssue]:
+    issues: list[SkillIssue] = []
+    for recommended in skill.frontmatter.recommends:
+        if recommended == skill.name:
+            issues.append(issue("error", "recommends must not include self", short_path(skill.path / "SKILL.md", root)))
+        elif recommended not in known_skills:
+            issues.append(
+                issue(
+                    "error",
+                    f"recommends references unknown skill '{recommended}'",
+                    short_path(skill.path / "SKILL.md", root),
+                )
+            )
+    return issues
+
+
+def collect_skill_issues(skill: Skill, root: Path, *, known_skills: set[str]) -> list[SkillIssue]:
     """汇总单个 skill 的全部 lint issue。"""
 
     issues: list[SkillIssue] = []
@@ -153,6 +201,7 @@ def collect_skill_issues(skill: Skill, root: Path) -> list[SkillIssue]:
     issues.extend(collect_agents_issues(skill, root))
     issues.extend(collect_resource_reference_issues(skill, root))
     issues.extend(collect_fixture_issues(skill, root))
+    issues.extend(collect_recommendation_issues(skill, root, known_skills=known_skills))
     return issues
 
 
@@ -173,7 +222,9 @@ def lint_skills(config: WorkbenchConfig, skill_name: str | None = None) -> Resul
             issues.append(issue("error", loaded.error.message, short_path(skill_dir, config.root)))
             continue
         skills.append(loaded.value)
-        issues.extend(collect_skill_issues(loaded.value, config.root))
+    known_skills = {item.name for item in skills}
+    for skill in skills:
+        issues.extend(collect_skill_issues(skill, config.root, known_skills=known_skills))
     return Result.ok(
         SkillLintPayload(
             skill_count=len(skills),
@@ -184,4 +235,4 @@ def lint_skills(config: WorkbenchConfig, skill_name: str | None = None) -> Resul
     )
 
 
-__all__ = ["lint_skills"]
+__all__ = ["lint_skills", "skill_to_summary"]

@@ -27,6 +27,7 @@ class ContextCommandGroup(CommandGroup):
                         ArgumentSpec(("--workspace",), {}),
                         ArgumentSpec(("--output",), {}),
                         ArgumentSpec(("--format",), {"choices": ["md", "json"], "default": "md"}),
+                        ArgumentSpec(("--block",), {"action": "append", "default": []}),
                     ),
                 ),
             ),
@@ -42,6 +43,7 @@ class ContextCommandGroup(CommandGroup):
             workspace_name=args.workspace,
             output_path=output,
             format_name=args.format,
+            block_names=args.block or None,
         )
         if target.is_err:
             return Result.err(target.error)

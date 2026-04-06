@@ -3,6 +3,33 @@ name: "codex-skill-authoring"
 description: "当需要创建或维护 Codex skill 时使用，包括编写 SKILL.md front matter、维护 agents/openai.yaml 元数据，以及整理 references 或 scripts。"
 metadata:
   short-description: "维护 Codex skills"
+  workbench:
+    role-fit:
+      - "policy"
+    domain-tags:
+      - "skills"
+    capabilities:
+      - "skill-authoring"
+    default-blocks:
+      - "overview"
+      - "skill-structure"
+      - "validation-checklist"
+    recommends:
+      - "skill-validation"
+    handoff-outputs:
+      - "skill-authoring-guidance"
+    blocks:
+      - name: "overview"
+        kind: "overview"
+      - name: "skill-structure"
+        kind: "reference"
+        path: "references/skill-structure.md"
+      - name: "validation-checklist"
+        kind: "reference"
+        path: "references/validation-checklist.md"
+      - name: "validate-name"
+        kind: "script_entry"
+        path: "scripts/validate_name.py"
 ---
 
 # Codex Skill 编写

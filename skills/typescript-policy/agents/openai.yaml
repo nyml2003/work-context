@@ -1,0 +1,7 @@
+interface:
+  display_name: "TypeScript Policy"
+  short_description: "给出前端 TypeScript 约束"
+  default_prompt: "使用 $typescript-policy 总结当前前端任务的类型边界、状态模型和错误模型，再交给实现侧消费。"
+policy:
+  allow_implicit_invocation: true
+
