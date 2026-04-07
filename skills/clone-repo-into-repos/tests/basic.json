@@ -1,0 +1,17 @@
+{
+  "bundle_contains": [
+    "name: \"clone-repo-into-repos\"",
+    "python scripts/git_repo_workflow.py clone --url <repo-url>",
+    "python scripts/git_repo_workflow.py inspect --repo <repo-path>",
+    "python scripts/git_repo_workflow.py commit --repo <repo-path>",
+    "suggested_message",
+    "commit_hash"
+  ],
+  "loaded_blocks": [
+    "overview",
+    "execution-playbook",
+    "handoff-checklist"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 0
+}

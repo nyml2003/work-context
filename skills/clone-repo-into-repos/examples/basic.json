@@ -1,0 +1,9 @@
+{
+  "request": "看一下当前仓库改了什么，帮我生成一个合适的 commit message，并直接提交。",
+  "preferred_commands": [
+    "python scripts/git_repo_workflow.py clone --url <repo-url> --dry-run",
+    "python scripts/git_repo_workflow.py inspect --repo <repo-path>",
+    "python scripts/git_repo_workflow.py commit --repo <repo-path> --dry-run",
+    "python scripts/git_repo_workflow.py commit --repo <repo-path>"
+  ]
+}

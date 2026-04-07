@@ -1,0 +1,6 @@
+interface:
+  display_name: "Git Repo Workflow"
+  short_description: "clone、inspect、commit git 仓库"
+  default_prompt: "Use $clone-repo-into-repos when the user wants to clone a repository, inspect current git changes, generate a commit message, or create a commit."
+policy:
+  allow_implicit_invocation: true
