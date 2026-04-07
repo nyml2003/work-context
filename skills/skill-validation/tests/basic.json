@@ -3,7 +3,7 @@
     "name: \"skill-validation\"",
     "使用 $skill-validation 校验这个仓库里刚创建或刚修改的 Codex skill。",
     "python ~/.work-context/scripts/workbench.py skill lint <name>",
-    "只会把 `skills/` 下面的 skill 目录逐个链接到 `~/.codex/skills`。"
+    "只会把 `skills/` 下面的顶层 skill 目录逐个链接到 `~/.codex/skills`。"
   ],
   "reference_count": 2
 }

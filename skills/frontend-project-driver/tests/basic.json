@@ -3,10 +3,10 @@
     "name: \"frontend-project-driver\"",
     "请求 framing",
     "模式选择",
-    "Skill 路由",
+    "阶段路由",
     "交付清单"
   ],
   "reference_count": 4,
   "script_entry_count": 0,
-  "loaded_blocks": ["overview", "request-framing", "mode-selection", "skill-routing", "delivery-checklist"]
+  "loaded_blocks": ["overview", "request-framing", "mode-selection", "stage-routing", "delivery-checklist"]
 }

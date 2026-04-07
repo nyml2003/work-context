@@ -11,8 +11,8 @@
 
 - 每个子任务是否都有 handoff
 - handoff 是否足够让下游继续，不需要整包回放上下文
-- 是否已完成 testing review
-- 是否已完成 regression review
+- 是否已完成 `references/review/frontend-testing/SKILL.md` 指定的 testing review
+- 是否已完成 `references/review/regression-review/SKILL.md` 指定的 regression review
 
 ## 默认质量门槛
 
@@ -27,4 +27,3 @@
 - 还缺什么
 - 最大风险是什么
 - 下一步是继续实现、进入 review，还是可以交付
-

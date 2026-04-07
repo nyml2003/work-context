@@ -1,6 +1,6 @@
 # 当前仓库的校验流程
 
-当一个 Codex skill 已经创建或基本写完后，优先按下面的顺序使用当前仓库 CLI。
+当一个顶层 Codex skill 已经创建或基本写完后，优先按下面的顺序使用当前仓库 CLI。
 
 ## 1. 先跑结构检查
 
@@ -72,3 +72,16 @@ python ~/.work-context/scripts/workbench.py skill link <name>
 install_root = "~/.codex/skills"
 scripts_root = "~/.work-context/scripts"
 ```
+
+## 内部模块的检查方式
+
+如果目标不是顶层 `skills/<name>/`，而是某个 `references/**/<name>/SKILL.md` 内部模块，不走独立的 `skill lint`、`skill test` 或 `skill link`。改为做下面这些检查：
+
+- `SKILL.md` 是否有合法 YAML front matter
+- 是否包含 `name` 和 `description`
+- 模块目录名是否和 `name` 一致
+- 正文是否仍保留默认立场或概述、workflow、规则、输出要求
+- 模块内引用的 `references/`、`scripts/`、`assets/` 路径是否真实存在
+- 如果保留了 `tests/`、`examples/` 或 `agents/`，它们是否仍与当前模块内容一致
+
+内部模块的目标是保留 skill 形态与可维护性，而不是成为独立可链接 skill。
