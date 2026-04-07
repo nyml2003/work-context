@@ -1,0 +1,54 @@
+{
+  "selected_skills": [
+    {
+      "name": "plan-flow-memory",
+      "description": "Use when Codex should detect reusable planning or workflow problems during any task, summarize what can be learned, ask whether the user wants to optimize the process, and persist confirmed workflow rules into memory. Trigger on planning, task decomposition, scoping, execution prep, retrospective, repeated clarification, process friction, workflow optimization, 计划, 复盘, 流程优化, 记住这种做法, 下次别再重复问, or similar requests to turn recurring process issues into reusable rules.",
+      "path": "D:\\code\\work-context\\skills\\plan-flow-memory"
+    }
+  ],
+  "loaded_blocks": [
+    {
+      "skill": "plan-flow-memory",
+      "name": "overview",
+      "kind": "overview",
+      "path": null
+    },
+    {
+      "skill": "plan-flow-memory",
+      "name": "plan-issue-taxonomy",
+      "kind": "reference",
+      "path": "skills\\plan-flow-memory\\references\\plan-issue-taxonomy.md"
+    },
+    {
+      "skill": "plan-flow-memory",
+      "name": "memory-template",
+      "kind": "reference",
+      "path": "skills\\plan-flow-memory\\references\\memory-template.md"
+    },
+    {
+      "skill": "plan-flow-memory",
+      "name": "record-memory",
+      "kind": "script_entry",
+      "path": "skills\\plan-flow-memory\\scripts\\upsert_memory.py"
+    }
+  ],
+  "references": [
+    {
+      "path": "skills\\plan-flow-memory\\references\\plan-issue-taxonomy.md",
+      "name": "plan-issue-taxonomy.md"
+    },
+    {
+      "path": "skills\\plan-flow-memory\\references\\memory-template.md",
+      "name": "memory-template.md"
+    }
+  ],
+  "script_entries": [
+    {
+      "skill": "plan-flow-memory",
+      "name": "record-memory",
+      "path": "skills\\plan-flow-memory\\scripts\\upsert_memory.py"
+    }
+  ],
+  "bundle_markdown": "# Skill Context\n\n- name: plan-flow-memory\n- path: skills\\plan-flow-memory\n\n## SKILL.md Front Matter\n\nname: \"plan-flow-memory\"\ndescription: \"Use when Codex should detect reusable planning or workflow problems during any task, summarize what can be learned, ask whether the user wants to optimize the process, and persist confirmed workflow rules into memory. Trigger on planning, task decomposition, scoping, execution prep, retrospective, repeated clarification, process friction, workflow optimization, 计划, 复盘, 流程优化, 记住这种做法, 下次别再重复问, or similar requests to turn recurring process issues into reusable rules.\"\nmetadata:\n  workbench:\n    role-fit:\n      - \"policy\"\n    domain-tags:\n      - \"planning\"\n      - \"workflow\"\n      - \"memory\"\n    capabilities:\n      - \"plan-flow-optimization\"\n      - \"workflow-memory\"\n    default-blocks:\n      - \"overview\"\n      - \"plan-issue-taxonomy\"\n      - \"memory-template\"\n      - \"record-memory\"\n    recommends: []\n    handoff-outputs:\n      - \"plan-flow-memory-summary\"\n    blocks:\n      -\n        name: \"overview\"\n        kind: \"overview\"\n      -\n        name: \"plan-issue-taxonomy\"\n        kind: \"reference\"\n        path: \"references/plan-issue-taxonomy.md\"\n      -\n        name: \"memory-template\"\n        kind: \"reference\"\n        path: \"references/memory-template.md\"\n      -\n        name: \"record-memory\"\n        kind: \"script_entry\"\n        path: \"scripts/upsert_memory.py\"\n  short-description: \"Capture plan issues and workflow memory\"\n\n## agents/openai.yaml\n\ninterface:\n  display_name: \"Plan Flow Memory\"\n  short_description: \"Capture plan issues and workflow memory\"\n  default_prompt: \"Use $plan-flow-memory to extract reusable planning issues, confirm whether the user wants a workflow optimization, and write confirmed rules into memory.\"\npolicy:\n  allow_implicit_invocation: true\n\n## overview\n\n# Plan Flow Memory\n\n## Default Stance\n\n- Treat repeated planning friction as a reusable workflow signal, not just a local annoyance.\n- Ask whether to optimize the process every time a clear plan-worthy issue appears.\n- Persist memory only after explicit user approval.\n- Match the user's language when summarizing the issue and asking for confirmation.\n\n## Workflow\n\n1. Detect a plan-worthy issue. Use `references/plan-issue-taxonomy.md` to classify it before asking anything.\n2. Summarize the issue in one or two sentences: what repeated, why it slowed the task, and what a better workflow would change.\n3. Ask a direct confirmation question. Default shape: \"I see a repeatable planning issue here: <summary>. Do you want me to turn it into a reusable workflow rule and remember it for next time?\" Use the user's language.\n4. If the user says yes, derive a stable ASCII pattern key, generalize the lesson, shape the entry with `references/memory-template.md`, and write it with `scripts/upsert_memory.py`.\n5. On future similar tasks, read the memory file first and apply the stored workflow before repeating the same clarification loop.\n\n## Detection Rules\n\n1. Broad trigger: scan any task for planning, scoping, decomposition, execution prep, retrospective, or repeated process friction.\n2. A plan-worthy issue must be reusable beyond the exact task. Prefer patterns such as missing success criteria, repeated scope clarification, unstable assumptions, repeated handoff gaps, or recurring review/test omissions.\n3. Do not record one-off project facts, temporary preferences, or raw conversation transcripts.\n4. If the user declines optimization, acknowledge it and do not write memory.\n5. If multiple symptoms point to one underlying issue, ask once and record one generalized rule.\n\n## Memory Rules\n\n1. Default memory file: `C:\\Users\\DELL\\.codex\\memories\\plan-flow-memory.md`.\n2. Store durable rules with: pattern, trigger signals, recommended workflow, scope, skip conditions, source note, and updated timestamp.\n3. Update an existing entry when the same pattern key appears. Do not append duplicates.\n4. Keep each entry human-readable Markdown. Optimize for reuse, not exhaustiveness.\n\n## Output Requirements\n\n- Issue summary\n- Confirmation question\n- Generalized workflow rule if approved\n- Memory write result, or an explicit note that no memory was written\n\n## plan-issue-taxonomy\n\n# Plan Issue Taxonomy\n\nUse this reference to decide whether a conversation contains a reusable planning issue worth summarizing and storing.\n\n## Strong candidates\n\n### Missing goal or success criteria\n\n- Signals:\n  - The user asks for a plan before the desired outcome is explicit.\n  - The same \"what does success look like?\" question keeps returning.\n- Reusable response:\n  - Lock goal, success criteria, and out-of-scope items before detailed planning.\n\n### Scope ambiguity or repeated clarification\n\n- Signals:\n  - The plan keeps changing because core scope boundaries were never fixed.\n  - The same scope question is asked more than once.\n- Reusable response:\n  - Confirm scope, non-goals, and constraints in a compact checklist before decomposing work.\n\n### Hidden assumptions\n\n- Signals:\n  - Implementation or planning choices keep getting revised because defaults were implied, not stated.\n  - The conversation reveals incompatible assumptions late.\n- Reusable response:\n  - State the chosen defaults up front and flag anything still uncertain before execution.\n\n### Weak handoff boundaries\n\n- Signals:\n  - Plans fail because roles, ownership, or acceptance criteria were too vague.\n  - Review or downstream execution reopens already-settled questions.\n- Reusable response:\n  - Emit concrete handoff artifacts: owner, scope, acceptance criteria, and open questions.\n\n### Missing review or closure loop\n\n- Signals:\n  - The task ends without a summary of what was learned.\n  - The same process mistake comes back across conversations.\n- Reusable response:\n  - Add a short retrospective step that captures what should change next time.\n\n## Do not store\n\n- One-off project facts\n- Temporary personal preferences\n- Raw transcripts or long conversation logs\n- Rules that are useful only for the current task\n\n## memory-template\n\n# Memory Template\n\nUse this structure when creating or updating `plan-flow-memory.md`.\n\n## File header\n\n```md\n# Plan Flow Memory\n\nThis file stores user-approved workflow optimizations for recurring planning and process issues.\nUpdate entries only after explicit user approval.\n\n## Entries\n```\n\n## Entry shape\n\n```md\n### Repeated Scope Clarification\n<!-- plan-flow-memory:key=repeated-scope-clarification -->\n- Pattern: Plans keep stalling because scope boundaries are not explicit at the start.\n- Trigger Signals:\n  - Repeated scope questions appear before work decomposition stabilizes.\n  - The plan changes after hidden non-goals surface.\n- Recommended Workflow:\n  1. Restate the goal, non-goals, and constraints before detailed planning.\n  2. Ask only the minimum blocking scope questions.\n  3. Freeze scope before task decomposition.\n- Scope: Planning, scoping, and execution-prep conversations.\n- Skip When:\n  - The task is trivial.\n  - The user explicitly wants immediate execution without a plan.\n- Source Note: Confirmed after repeated scope clarification during planning.\n- Updated: 2026-04-06T12:00:00+00:00\n```\n\n## Key rules\n\n- Use stable ASCII keys such as `repeated-scope-clarification`.\n- Generalize the lesson so it applies to future tasks.\n- Prefer three to five workflow steps.\n- Update existing entries instead of appending duplicates.\n\n## script entries\n\n- record-memory: skills\\plan-flow-memory\\scripts\\upsert_memory.py\n",
+  "workspace": null
+}

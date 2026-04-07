@@ -1,0 +1,6 @@
+interface:
+  display_name: "Plan Flow Memory"
+  short_description: "Capture plan issues and workflow memory"
+  default_prompt: "Use $plan-flow-memory to extract reusable planning issues, confirm whether the user wants a workflow optimization, and write confirmed rules into memory."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Frontend Project Driver"
+  short_description: "前端项目统一入口与 skill 路由器"
+  default_prompt: "使用 $frontend-project-driver 作为统一入口推进当前前端任务，先做 framing，再判断单 agent 或多 agent 路线，并选择最小下游 skill 集合。"
+policy:
+  allow_implicit_invocation: true
+

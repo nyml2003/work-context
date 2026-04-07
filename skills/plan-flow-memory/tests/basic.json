@@ -1,0 +1,17 @@
+{
+  "bundle_contains": [
+    "name: \"plan-flow-memory\"",
+    "Use $plan-flow-memory",
+    "Plan Issue Taxonomy",
+    "Memory Template",
+    "upsert_memory.py"
+  ],
+  "loaded_blocks": [
+    "overview",
+    "plan-issue-taxonomy",
+    "memory-template",
+    "record-memory"
+  ],
+  "reference_count": 2,
+  "script_entry_count": 1
+}
